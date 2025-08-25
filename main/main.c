@@ -2,6 +2,10 @@
 #include "common.h"
 #include "lcd_ips.h"
 
+#include "wifi_config.h"
+
+#include "web_config.h"
+
 // オンボードLED PWM制御用チャンネル・タイマー定義
 #define ONBOARD_LED_PWM_TIMER      LEDC_TIMER_0
 #define ONBOARD_LED_PWM_MODE       LEDC_LOW_SPEED_MODE
@@ -90,15 +94,11 @@ static volatile uint32_t valid_pulses = 0;         // 有効パルス数
 static volatile uint32_t unknown_pulses = 0;       // 不明パルス数
 static volatile uint32_t rejected_quality = 0;     // 品質不良で拒否された回数
 
-// NVSから合計パルス数を読み込む関数
+// NVSから合計パルス数とWi-Fi情報(SSID/PASS)を読み込む関数
 esp_err_t load_bank_data_from_nvs(void)
 {
-    return ESP_OK;
-    // メーカチップガチャ用としたので保存はしない
-
     nvs_handle_t nvs_handle;
-    esp_err_t err;
-    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
     if (err != ESP_OK) {
         ESP_LOGI(TAG, "NVSからの読み込みに失敗（初回起動？）: %s", esp_err_to_name(err));
         return err;
@@ -107,25 +107,29 @@ esp_err_t load_bank_data_from_nvs(void)
     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
         ESP_LOGE(TAG, "パルス数の読み込みに失敗: %s", esp_err_to_name(err));
     }
+    size_t len;
+    len = sizeof(bank_data.ssid);
+    err = nvs_get_str(nvs_handle, "wifi_ssid", bank_data.ssid, &len);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) bank_data.ssid[0] = '\0';
+    len = sizeof(bank_data.password);
+    err = nvs_get_str(nvs_handle, "wifi_pass", bank_data.password, &len);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) bank_data.password[0] = '\0';
     nvs_close(nvs_handle);
     total_value = total_pulse_count * 100;
     ESP_LOGI(TAG, "NVSから合計パルス数を読み込みました: %luパルス（%lu円）", total_pulse_count, total_value);
+    ESP_LOGI(TAG, "NVSからWi-Fi情報を読み込みました: SSID=%s PASS=%s", bank_data.ssid, bank_data.password);
     return ESP_OK;
 }
 
-// NVSに合計パルス数を保存する関数
+// NVSに合計パルス数とWi-Fi情報(SSID/PASS)を保存する関数
 esp_err_t save_bank_data_to_nvs(void)
 {
-    return ESP_OK;
-    // メーカチップガチャ用としたので保存はしない
-
     if (xSemaphoreTake(nvs_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
         ESP_LOGW(TAG, "NVS保存処理がタイムアウトしました");
         return ESP_ERR_TIMEOUT;
     }
     nvs_handle_t nvs_handle;
-    esp_err_t err;
-    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVSのオープンに失敗: %s", esp_err_to_name(err));
         xSemaphoreGive(nvs_mutex);
@@ -138,11 +142,15 @@ esp_err_t save_bank_data_to_nvs(void)
         xSemaphoreGive(nvs_mutex);
         return err;
     }
+    err = nvs_set_str(nvs_handle, "wifi_ssid", bank_data.ssid);
+    if (err != ESP_OK) ESP_LOGE(TAG, "SSIDの保存に失敗: %s", esp_err_to_name(err));
+    err = nvs_set_str(nvs_handle, "wifi_pass", bank_data.password);
+    if (err != ESP_OK) ESP_LOGE(TAG, "PASSの保存に失敗: %s", esp_err_to_name(err));
     err = nvs_commit(nvs_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVSコミットに失敗: %s", esp_err_to_name(err));
     } else {
-        ESP_LOGI(TAG, "合計パルス数をNVSに保存しました: %luパルス", total_pulse_count);
+        ESP_LOGI(TAG, "合計パルス数とWi-Fi情報をNVSに保存しました: %luパルス, SSID=%s PASS=%s", total_pulse_count, bank_data.ssid, bank_data.password);
     }
     nvs_close(nvs_handle);
     xSemaphoreGive(nvs_mutex);
@@ -609,6 +617,11 @@ esp_err_t init_gpio(void)
 }
 
 // メイン関数
+// 必要なESP-IDFヘッダを追加
+#include "esp_netif.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "--Maker Chip Gacha-- 開始");
@@ -621,9 +634,39 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "NVSが初期化されました");
-    
+
+        // ネットワーク初期化は一度だけ
+        ESP_ERROR_CHECK(esp_netif_init());
+        ESP_ERROR_CHECK(esp_event_loop_create_default());
+        esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
+        esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
+
     // 保存された合計パルス数を読み込み
     load_bank_data_from_nvs();
+
+    // --- Wi-Fi設定・接続自動実行 ---
+    ESP_LOGI("wifi", "SoftAP+Webサーバ起動");
+    wifi_config_softap_start();
+    start_wifi_config_server();
+
+    // SSID/PASSが保存されていればSTA接続＆NTP取得
+    vTaskDelay(pdMS_TO_TICKS(5000)); // Web設定待ち猶予（5秒）
+    if (wifi_config_sta_connect() == ESP_OK) {
+        char ip[16] = {0};
+        if (wifi_config_get_ip(ip, sizeof(ip)) == ESP_OK) {
+            ESP_LOGI("wifi", "IPアドレス: %s", ip);
+        }
+        char datetime[32] = {0};
+        if (wifi_config_get_ntp_time(datetime, sizeof(datetime)) == ESP_OK) {
+            ESP_LOGI("wifi", "NTP時刻: %s", datetime);
+        }
+    } else {
+        ESP_LOGW("wifi", "Wi-Fi STA接続失敗。Webで設定してください");
+    }
     
     // パルス検出関連変数の初期化
     pulse_count = 0;

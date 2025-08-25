@@ -73,6 +73,8 @@ typedef struct {
     uint32_t total_value;
     uint32_t coin_count[6];
     uint32_t coin_values[6];
+    char ssid[33];      // Wi-Fi SSID
+    char password[65];  // Wi-Fiパスワード
 } coin_data_t;
 // 入金データ
 extern coin_data_t bank_data;
