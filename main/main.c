@@ -30,7 +30,8 @@ void onboard_led_pwm_start(int duty_percent, int freq_hz) {
         .timer_sel = ONBOARD_LED_PWM_TIMER,
         .duty = (duty_percent * ((1 << 10) - 1)) / 100,
         .hpoint = 0,
-        .flags.output_invert = 1 // 極性反転（duty=0で最大輝度、duty=maxで消灯）
+        .flags.output_invert = 0 // 極性通常（duty=maxで最大輝度、duty=0で消灯）
+        // .flags.output_invert = 1 // 極性反転（duty=0で最大輝度、duty=maxで消灯）
     };
     ledc_channel_config(&channel_conf);
     // ledc_fade_func_install(0); // 初期化時のみ呼び出す
@@ -38,7 +39,7 @@ void onboard_led_pwm_start(int duty_percent, int freq_hz) {
 
 // オンボードLED PWM停止
 void onboard_led_pwm_stop(void) {
-ledc_stop(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, 0); // 0=出力Low（output_invert=1時は消灯）
+    ledc_stop(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, 1);    //0); // 0=出力Low（output_invert=1時は消灯）
     // ledc_fade_func_uninstall(); // 終了時のみ呼び出す
 }
 
@@ -46,17 +47,16 @@ ledc_stop(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, 0); // 0=出力Low（ou
 static void onboard_led_pwm_fade_task(void *pvParameters) {
     const int max_duty = (1 << 10) - 1; // 10bit解像度
     const int fade_time_ms = 2000; // 2秒フェード
-    // PWM初期化（duty=0, freq=1000Hz）
-    onboard_led_pwm_start(0, 1000);
-    // 2秒で最大輝度までフェードアップ
-    ledc_set_fade_with_time(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, max_duty, fade_time_ms);
-    ledc_fade_start(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, LEDC_FADE_NO_WAIT);
-    vTaskDelay(pdMS_TO_TICKS(fade_time_ms));
-    // 2秒で消灯までフェードダウン
+    // まず消灯状態（duty=max）から開始
+    onboard_led_pwm_start(100, 1000); // duty_percent=100で消灯（output_invert=1のため）
+    vTaskDelay(pdMS_TO_TICKS(100)); // 安定化のため少し待つ
+    // 2秒で全点灯（duty=max→0）
     ledc_set_fade_with_time(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, 0, fade_time_ms);
-    ledc_fade_start(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, LEDC_FADE_NO_WAIT);
-    vTaskDelay(pdMS_TO_TICKS(fade_time_ms));
-    // 後始末
+    ledc_fade_start(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, LEDC_FADE_WAIT_DONE);
+    // 2秒で消灯（duty=0→max）
+    ledc_set_fade_with_time(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, max_duty, fade_time_ms);
+    ledc_fade_start(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, LEDC_FADE_WAIT_DONE);
+    // 後始末（消灯）
     onboard_led_pwm_stop();
     vTaskDelete(NULL);
 }
@@ -638,8 +638,8 @@ void app_main(void)
         // ネットワーク初期化は一度だけ
         ESP_ERROR_CHECK(esp_netif_init());
         ESP_ERROR_CHECK(esp_event_loop_create_default());
-        esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
-        esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+    esp_netif_create_default_wifi_ap();
+    esp_netif_create_default_wifi_sta();
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
         ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
@@ -756,8 +756,8 @@ void app_main(void)
 
     // メインループ
     while (1) {
-        // // リセットボタンのチェック
-        // check_reset_button();
+        // リセットボタンのチェック
+        check_reset_button();
 
         vTaskDelay(pdMS_TO_TICKS(100));  // 10ms間隔での処理
     }

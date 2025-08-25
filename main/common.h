@@ -32,11 +32,29 @@ static const char *TAG = "MC_GACHA";
 #define NVS_KEY_TOTAL_VALUE "total_value"
 #define NVS_KEY_COIN_COUNT "coin_count"
 
-// GPIO定義
-#define COIN_SELECTOR_PIN GPIO_NUM_4    // コインセレクタのパルス入力ピン
+#if 1
+// GPIO定義（ESP32-C3 Mini）
+#define RESET_BUTTON_PIN  GPIO_NUM_9    // GPIO_NUM_0    // リセットボタンピン（Mini用 BOOTボタン）
+#define ONBOARD_LED_PIN   GPIO_NUM_0    // GPIO_NUM_9    // 外部LED用ピン(PWM制御)→モータ制御
+
+#define COIN_SELECTOR_PIN GPIO_NUM_3    // コインセレクタのパルス入力ピン（Mini用）
+#define EXT_LED_PIN       GPIO_NUM_1    // 外部LED用ピン（Mini用）
+#define EXT_BUTTON_PIN    GPIO_NUM_10    // GPIO_NUM_10   // 外部ボタン用ピン（Mini用）
+
+// LCD(SPI)用ピン（Mini用: lcd_ips.c等で利用）
+#define LCD_MOSI_PIN      GPIO_NUM_18   // SDA
+#define LCD_SCLK_PIN      GPIO_NUM_19   // SCL
+#define LCD_CS_PIN        GPIO_NUM_6    // SPI CS
+#define LCD_DC_PIN        GPIO_NUM_5    // Data/Command
+#define LCD_RST_PIN       GPIO_NUM_4    // Resetピン
+#define LCD_BLK_PIN       GPIO_NUM_7    // バックライト制御ピン
+#else
+// GPIO定義（ESP32-C3 Super Mini）
 #define RESET_BUTTON_PIN  GPIO_NUM_9    // リセットボタンピン（ESP32-C3 Super Mini BOOTボタン）
-#define EXT_LED_PIN       GPIO_NUM_0   // 外部LED用ピン
 #define ONBOARD_LED_PIN   GPIO_NUM_8    // オンボードLED用ピン（GPIO08直結）
+
+#define COIN_SELECTOR_PIN GPIO_NUM_4    // コインセレクタのパルス入力ピン
+#define EXT_LED_PIN       GPIO_NUM_0   // 外部LED用ピン
 #define EXT_BUTTON_PIN    GPIO_NUM_5    // 外部ボタン用ピン
 
 // LCD(SPI)用ピン（参考: lcd_ips.c等で利用）
@@ -46,6 +64,7 @@ static const char *TAG = "MC_GACHA";
 #define LCD_DC_PIN        GPIO_NUM_2    // Data/Command
 #define LCD_RST_PIN       GPIO_NUM_3    // Resetピン
 #define LCD_BLK_PIN       GPIO_NUM_1    // バックライト制御ピン
+#endif
 
 #define DEBOUNCE_TIME_MS 5              // デバウンス時間（最速化）
 #define PULSE_WIDTH_MS 30               // 実際のパルス幅
