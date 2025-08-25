@@ -1,4 +1,3 @@
-
 // 必要なヘッダを整理し、TAGはcommon.hのものを利用
 #include "common.h"
 #include "wifi_config.h"
@@ -12,43 +11,6 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 
-// Wi-Fiセットアップ・NTP取得を別タスクで実行する関数
-static void wifi_setup_task(void *pvParameters) {
-    // イベントグループ初期化（初回のみ）
-    if (wifi_event_group == NULL) {
-        wifi_event_group = xEventGroupCreate();
-        if (wifi_event_group == NULL) {
-            ESP_LOGE(TAG, "wifi_event_group作成失敗");
-            vTaskDelete(NULL);
-            return;
-        }
-    }
-    ESP_LOGI(TAG, "SoftAP+Webサーバ起動");
-    wifi_config_softap_start();
-    start_wifi_config_server();
-
-    // SSID/PASSが保存されていればSTA接続＆NTP取得
-    vTaskDelay(pdMS_TO_TICKS(5000)); // Web設定待ち猶予（5秒）
-    if (wifi_config_sta_connect() == ESP_OK) {
-        char ip[16] = {0};
-        if (wifi_config_get_ip(ip, sizeof(ip)) == ESP_OK) {
-            ESP_LOGI(TAG, "IPアドレス: %s", ip);
-        }
-        char datetime[32] = {0};
-        if (wifi_config_get_ntp_time(datetime, sizeof(datetime)) == ESP_OK) {
-            ESP_LOGI(TAG, "NTP時刻: %s", datetime);
-        }
-    } else {
-        ESP_LOGW(TAG, "Wi-Fi STA接続失敗。Webで設定してください");
-    }
-    vTaskDelete(NULL);
-}
-
-// main.cから呼び出す用
-void start_wifi_setup_task(void) {
-    xTaskCreate(wifi_setup_task, "wifi_setup", 4096, NULL, 6, NULL);
-}
-
 #include "esp_sntp.h"
 #include "lwip/inet.h"
 #include "freertos/FreeRTOS.h"
@@ -59,7 +21,7 @@ void start_wifi_setup_task(void) {
 #define WIFI_CONFIG_NAMESPACE "wifi_cfg"
 #define WIFI_CONFIG_SSID_KEY "ssid"
 #define WIFI_CONFIG_PASS_KEY "pass"
-#define WIFI_SOFTAP_SSID "ESP32_SETUP"
+#define WIFI_SOFTAP_SSID "Cerevo_MakerChipGacha"
 #define WIFI_SOFTAP_PASS "12345678"
 #define WIFI_SOFTAP_CHANNEL 1
 #define WIFI_MAX_STA_CONN 1
@@ -214,12 +176,16 @@ esp_err_t wifi_config_get_ip(char* ip_buf, size_t buf_len) {
 }
 
 esp_err_t wifi_config_get_ntp_time(char* datetime_buf, size_t buf_len) {
-    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, NTP_SERVER_NAME);
-    esp_sntp_init();
-    // 日本時間（JST）にタイムゾーンを設定
-    setenv("TZ", "JST-9", 1);
-    tzset();
+    static bool sntp_initialized = false;
+    if (!sntp_initialized) {
+        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+        esp_sntp_setservername(0, NTP_SERVER_NAME);
+        esp_sntp_init();
+        // 日本時間（JST）にタイムゾーンを設定
+        setenv("TZ", "JST-9", 1);
+        tzset();
+        sntp_initialized = true;
+    }
     time_t now = 0;
     struct tm timeinfo = {0};
     int retry = 0;
@@ -237,4 +203,96 @@ esp_err_t wifi_config_get_ntp_time(char* datetime_buf, size_t buf_len) {
     strftime(datetime_buf, buf_len, "%Y-%m-%d %H:%M:%S", &timeinfo);
     ESP_LOGI(TAG, "NTP時刻取得: %s", datetime_buf);
     return ESP_OK;
+}
+
+// NTPを定期的に取得し、最新時刻を保持するタスク
+static char latest_datetime[32] = "";
+static char latest_date[16] = "";
+static char latest_time[16] = "";
+
+void ntp_update_task(void *pvParameters) {
+    while (1) {
+        char buf[32] = "";
+        if (wifi_config_get_ntp_time(buf, sizeof(buf)) == ESP_OK) {
+            strncpy(latest_datetime, buf, sizeof(latest_datetime));
+            // 年月日（YYYY-MM-DD）
+            strncpy(latest_date, buf, 10);
+            latest_date[10] = '\0';
+            // 時分（HH:MM）
+            if (strlen(buf) >= 16) {
+                strncpy(latest_time, buf + 11, 5);
+                latest_time[5] = '\0';
+            } else {
+                latest_time[0] = '\0';
+            }
+        }
+        lcd_show_request(LCD_STATE_DATE_TIME);  // LCDに日時指示を表示
+
+        // 0秒±5秒の範囲なら60秒待機、それ以外は次の0秒-5秒まで待機
+        time_t now = 0;
+        struct tm timeinfo = {0};
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        int sec = timeinfo.tm_sec;
+        int delay_ms;
+        if (sec <= 5) {
+            delay_ms = 60000; // 0秒±5秒の範囲なら60秒
+        } else {
+            delay_ms = ((60 - sec) + 0) * 1000; // 次の0秒まで
+            if (delay_ms < 0) delay_ms = 1000; // 念のため
+        }
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
+    }
+}
+
+// 年月日（YYYY-MM-DD）を取得
+void get_latest_date(char *buf, size_t len) {
+    strncpy(buf, latest_date, len);
+    buf[len-1] = '\0';
+}
+// 時分（HH:MM）を取得
+void get_latest_time(char *buf, size_t len) {
+    strncpy(buf, latest_time, len);
+    buf[len-1] = '\0';
+}
+
+// Wi-Fiセットアップ・NTP取得を別タスクで実行する関数
+static void wifi_setup_task(void *pvParameters) {
+    // イベントグループ初期化（初回のみ）
+    if (wifi_event_group == NULL) {
+        wifi_event_group = xEventGroupCreate();
+        if (wifi_event_group == NULL) {
+            ESP_LOGE(TAG, "wifi_event_group作成失敗");
+            vTaskDelete(NULL);
+            return;
+        }
+    }
+    ESP_LOGI(TAG, "SoftAP+Webサーバ起動");
+    wifi_config_softap_start();
+    start_wifi_config_server();
+
+    // SSID/PASSが保存されていればSTA接続＆NTP取得
+    vTaskDelay(pdMS_TO_TICKS(5000)); // Web設定待ち猶予（5秒）
+    if (wifi_config_sta_connect() == ESP_OK) {
+        char ip[16] = {0};
+        if (wifi_config_get_ip(ip, sizeof(ip)) == ESP_OK) {
+            ESP_LOGI(TAG, "IPアドレス: %s", ip);
+        }
+        char datetime[32] = {0};
+        if (wifi_config_get_ntp_time(datetime, sizeof(datetime)) == ESP_OK) {
+            ESP_LOGI(TAG, "NTP時刻: %s", datetime);
+        }
+    } else {
+        ESP_LOGW(TAG, "Wi-Fi STA接続失敗。Webで設定してください");
+    }
+    lcd_show_request(LCD_STATE_INSERT);     // LCDに挿入指示を表示
+    // lcd_show_request(LCD_STATE_DATE_TIME);  // LCDに日時指示を表示
+
+    xTaskCreate(ntp_update_task, "ntp_update", 2048, NULL, 3, NULL);
+    vTaskDelete(NULL);
+}
+
+// main.cから呼び出す用
+void start_wifi_setup_task(void) {
+    xTaskCreate(wifi_setup_task, "wifi_setup", 4096, NULL, 6, NULL);
 }

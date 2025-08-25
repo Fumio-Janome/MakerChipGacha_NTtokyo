@@ -5,6 +5,7 @@
 #include "common.h"
 #include "lcd_ips.h"
 #include "esp_err.h"
+#include "wifi_config.h"
 
 // LCD関連の変数
 static spi_device_handle_t lcd_spi = NULL;
@@ -22,12 +23,12 @@ uint16_t color_title_back; // タイトル背景色
 uint16_t color_black;
 uint16_t color_green;
 
-// LCD描画本体
-static void lcd_draw_ui_title(void) {
-    lcd_print_string(25, 10, "MAKER CHIP", color_title, color_title_back, 2);
-    // lcd_print_string(55, 40, "GACHA", color_black, color_back, 2);
-    lcd_print_string(40, 40, "GACHA", color_title, color_title_back, 3);
-}
+// // LCD描画本体
+// static void lcd_draw_ui_title(void) {
+//     lcd_print_string(25, 10, "MAKER CHIP", color_title, color_title_back, 2);
+//     // lcd_print_string(55, 40, "GACHA", color_black, color_back, 2);
+//     lcd_print_string(40, 40, "GACHA", color_title, color_title_back, 3);
+// }
 static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
 // static void lcd_draw_ui(void) {
     if (!lcd_initialized) return;
@@ -54,7 +55,7 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
         lcd_fill_message_area(color_back);
 
         lcd_print_string(20, 90, "STARTING", color_black, color_back, 3);
-        lcd_print_string(20, 130, "UP", color_black, color_back, 3);
+        lcd_print_string(20, 130, "UP...", color_black, color_back, 3);
         lcd_print_string(20, 170, "PLEASE", color_black, color_back, 3);
         lcd_print_string(20, 210, "WAIT", color_black, color_back, 3);
         break;
@@ -64,7 +65,7 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
         lcd_print_string(20, 90, "PLEASE", color_black, color_back, 3);
         lcd_print_string(20, 130, "INSERT", color_black, color_back, 3);
         lcd_print_string(20, 170, "500", color_green, color_back, 5);
-        lcd_print_string(20, 220, "YEN", color_black, color_back, 3);
+        lcd_print_string(90, 220, "YEN", color_black, color_back, 3);
         break;
     case LCD_STATE_AMOUNT:
         lcd_fill_message_area(color_back);
@@ -76,7 +77,7 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
             int value_x = (value_len <= 2) ? 40 : (value_len <= 3) ? 20 : 5;
             lcd_print_string(value_x, 140, buffer, color_green, color_back, 7);
         }
-        lcd_print_string(90, 220, "YEN", color_black, color_back, 3);
+        lcd_print_string(90, 210, "YEN", color_black, color_back, 3);
         break;
     case LCD_STATE_PRESS_BUTTON:
         lcd_fill_message_area(color_back);
@@ -91,16 +92,23 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
         lcd_print_string(20, 90, "THANK", color_black, color_back, 4);
         lcd_print_string(20, 130, "YOU", color_black, color_back, 4);
         lcd_print_string(20, 170, "SO", color_black, color_back, 4);
-        lcd_print_string(20, 220, "MUCH!!", color_black, color_back, 4);
+        lcd_print_string(20, 210, "MUCH!!", color_black, color_back, 4);
         break;
     case LCD_STATE_DATE_TIME:
         lcd_fill_datetime_area(color_back);
 
-        snprintf(buffer, sizeof(buffer), "%04d/%02d/%02d", 2025, 8, 21);
+        // snprintf(buffer, sizeof(buffer), "%04d/%02d/%02d", 2025, 8, 21);
+        get_latest_date(buffer, 12);
         lcd_print_string(20, 270, buffer, color_black, color_back, 2);
 
-        snprintf(buffer, sizeof(buffer), "%02d:%02d <%d>", 12, 34, 1234);
+        // snprintf(buffer, sizeof(buffer), "%02d:%02d <%d>", 12, 34, 1234);
+        get_latest_time(buffer, 6);
         lcd_print_string(20, 295, buffer, color_black, color_back, 2);
+
+        //ここでMakerChip購入数を表示
+        snprintf(buffer, sizeof(buffer), "<%d>", 1234);
+        // get_latest_time(buffer, 6);
+        lcd_print_string(90, 295, buffer, color_black, color_back, 2);
         break;
     }
     

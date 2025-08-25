@@ -31,5 +31,8 @@ esp_err_t wifi_config_load(void);
 esp_err_t wifi_config_save(const char* ssid, const char* password);
 esp_err_t wifi_config_get_ip(char* ip_buf, size_t buf_len);
 esp_err_t wifi_config_get_ntp_time(char* datetime_buf, size_t buf_len);
+void get_latest_date(char *buf, size_t len);
+void get_latest_time(char *buf, size_t len);
+void ntp_update_task(void *pvParameters);
 
 #endif // WIFI_CONFIG_H
