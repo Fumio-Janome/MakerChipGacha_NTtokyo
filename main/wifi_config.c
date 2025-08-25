@@ -1,14 +1,51 @@
+
+// 必要なヘッダを整理し、TAGはcommon.hのものを利用
+#include "common.h"
 #include "wifi_config.h"
+#include "web_config.h"
 #include <string.h>
+#include <stddef.h>
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_err.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+
+// Wi-Fiセットアップ・NTP取得を別タスクで実行する関数
+static void wifi_setup_task(void *pvParameters) {
+    ESP_LOGI(TAG, "SoftAP+Webサーバ起動");
+    wifi_config_softap_start();
+    start_wifi_config_server();
+
+    // SSID/PASSが保存されていればSTA接続＆NTP取得
+    vTaskDelay(pdMS_TO_TICKS(5000)); // Web設定待ち猶予（5秒）
+    if (wifi_config_sta_connect() == ESP_OK) {
+        char ip[16] = {0};
+        if (wifi_config_get_ip(ip, sizeof(ip)) == ESP_OK) {
+            ESP_LOGI(TAG, "IPアドレス: %s", ip);
+        }
+        char datetime[32] = {0};
+        if (wifi_config_get_ntp_time(datetime, sizeof(datetime)) == ESP_OK) {
+            ESP_LOGI(TAG, "NTP時刻: %s", datetime);
+        }
+    } else {
+        ESP_LOGW(TAG, "Wi-Fi STA接続失敗。Webで設定してください");
+    }
+    vTaskDelete(NULL);
+}
+
+// main.cから呼び出す用
+void start_wifi_setup_task(void) {
+    xTaskCreate(wifi_setup_task, "wifi_setup", 4096, NULL, 6, NULL);
+}
+
 #include "esp_sntp.h"
 #include "lwip/inet.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/task.h"
+#include <time.h>
 
 #define WIFI_CONFIG_NAMESPACE "wifi_cfg"
 #define WIFI_CONFIG_SSID_KEY "ssid"
@@ -18,7 +55,7 @@
 #define WIFI_SOFTAP_CHANNEL 1
 #define WIFI_MAX_STA_CONN 1
 
-static const char *TAG = "wifi_config";
+// TAGはcommon.hで定義済み
 static EventGroupHandle_t wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 

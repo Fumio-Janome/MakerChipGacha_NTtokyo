@@ -1,3 +1,5 @@
+// Wi-Fiセットアップ・NTP取得を別タスクで実行するAPI
+void start_wifi_setup_task(void);
 #include <stdint.h>
 #include "esp_event.h"
 #ifdef __cplusplus

@@ -648,25 +648,8 @@ void app_main(void)
     // 保存された合計パルス数を読み込み
     load_bank_data_from_nvs();
 
-    // --- Wi-Fi設定・接続自動実行 ---
-    ESP_LOGI("wifi", "SoftAP+Webサーバ起動");
-    wifi_config_softap_start();
-    start_wifi_config_server();
-
-    // SSID/PASSが保存されていればSTA接続＆NTP取得
-    vTaskDelay(pdMS_TO_TICKS(5000)); // Web設定待ち猶予（5秒）
-    if (wifi_config_sta_connect() == ESP_OK) {
-        char ip[16] = {0};
-        if (wifi_config_get_ip(ip, sizeof(ip)) == ESP_OK) {
-            ESP_LOGI("wifi", "IPアドレス: %s", ip);
-        }
-        char datetime[32] = {0};
-        if (wifi_config_get_ntp_time(datetime, sizeof(datetime)) == ESP_OK) {
-            ESP_LOGI("wifi", "NTP時刻: %s", datetime);
-        }
-    } else {
-        ESP_LOGW("wifi", "Wi-Fi STA接続失敗。Webで設定してください");
-    }
+    // Wi-Fi/NTP関連は別タスクで実行
+    start_wifi_setup_task();
     
     // パルス検出関連変数の初期化
     pulse_count = 0;
