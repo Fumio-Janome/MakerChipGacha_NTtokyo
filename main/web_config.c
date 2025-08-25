@@ -83,7 +83,11 @@ static esp_err_t wifi_post_handler(httpd_req_t *req) {
 }
 
 static esp_err_t wifi_get_handler(httpd_req_t *req) {
-    char html[1024];
+    char *html = malloc(2048);
+    if (!html) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+        return ESP_FAIL;
+    }
     char ssid[33] = "";
     wifi_config_load();
     // 既存SSIDを取得（NVSから）
@@ -95,19 +99,41 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
     }
     char ssid_esc[64];
     html_escape(ssid_esc, ssid, sizeof(ssid_esc));
-    snprintf(html, sizeof(html),
-        "<h2>Wi-Fi設定</h2>"
-        "<p>この画面でご自宅や職場のWi-Fi情報を設定してください。<br>"
-        "設定後、ESP32は自動的にWi-Fiに接続します。</p>"
+    snprintf(html, 2048,
+        "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>WiFi Config</title>"
+        "<style>"
+        "body{font-family:Arial;margin:20px;background:#f5f5f5}"
+        "h1{color:#333;text-align:center}"
+        ".c{max-width:500px;margin:0 auto;background:white;padding:20px;border-radius:5px}"
+        "input[type=text],input[type=password]{width:100%%;padding:10px;margin:5px 0;border:1px solid #ccc;border-radius:3px;box-sizing:border-box}"
+        "button{background:#4CAF50;color:white;padding:12px;border:none;border-radius:3px;cursor:pointer;width:100%%;font-size:14px}"
+        "button:hover{background:#45a049}"
+        "table{width:100%%;border-collapse:collapse;margin:10px 0}"
+        "td{padding:8px;border-bottom:1px solid #ddd}"
+        ".t{color:#4CAF50;font-weight:bold}"
+        "</style>"
+        "</head><body>"
+        "<div class=c>"
+        "<h1>Cerevo Maker Chip Gacha<br>Wi-Fi設定</h1>"
+        "<table>"
+        "<tr><td><b>ファームウェア</b></td><td>1.0.0</td></tr>"
+        "<tr><td><b>現在のSSID</b></td><td>%s</td></tr>"
+        "</table>"
+        "<h2>Wi-Fi情報の入力</h2>"
         "<form method='POST'>"
-        "<label>SSID:<input name='ssid' value='%s' maxlength='32' required></label><br>"
-        "<label>パスワード:<input name='pass' type='password' maxlength='64'></label><br>"
-        "<button type='submit'>保存</button>"
+        "<label for=ssid>SSID:</label>"
+        "<input type=text id=ssid name=ssid value=\"%s\" maxlength=\"32\" required>"
+        "<label for=pass>パスワード:</label>"
+        "<input type=password id=pass name=pass maxlength=\"64\">"
+        "<button type=submit>保存</button>"
         "</form>"
-        "<p style='color:gray;font-size:small;'>※SSIDは必須、パスワードは必要に応じて入力してください。</p>",
-        ssid_esc);
+        "<p style='color:gray;font-size:small;'>※SSIDは必須、パスワードは必要に応じて入力してください。</p>"
+        "</div>"
+        "</body></html>",
+        ssid_esc, ssid_esc);
     httpd_resp_set_type(req, "text/html; charset=UTF-8");
     httpd_resp_sendstr(req, html);
+    free(html);
     return ESP_OK;
 }
 
