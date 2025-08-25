@@ -80,7 +80,7 @@ static esp_err_t wifi_post_handler(httpd_req_t *req) {
 }
 
 static esp_err_t wifi_get_handler(httpd_req_t *req) {
-    char html[512];
+    char html[1024];
     char ssid[33] = "";
     wifi_config_load();
     // 既存SSIDを取得（NVSから）
@@ -93,7 +93,15 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
     char ssid_esc[64];
     html_escape(ssid_esc, ssid, sizeof(ssid_esc));
     snprintf(html, sizeof(html),
-        "<h2>Wi-Fi設定</h2><form method='POST'><label>SSID:<input name='ssid' value='%s' maxlength='32'></label><br><label>パスワード:<input name='pass' type='password' maxlength='64'></label><br><button>保存</button></form>",
+        "<h2>Wi-Fi設定</h2>"
+        "<p>この画面でご自宅や職場のWi-Fi情報を設定してください。<br>"
+        "設定後、ESP32は自動的にWi-Fiに接続します。</p>"
+        "<form method='POST'>"
+        "<label>SSID:<input name='ssid' value='%s' maxlength='32' required></label><br>"
+        "<label>パスワード:<input name='pass' type='password' maxlength='64'></label><br>"
+        "<button type='submit'>保存</button>"
+        "</form>"
+        "<p style='color:gray;font-size:small;'>※SSIDは必須、パスワードは必要に応じて入力してください。</p>",
         ssid_esc);
     httpd_resp_set_type(req, "text/html; charset=UTF-8");
     httpd_resp_sendstr(req, html);
@@ -101,7 +109,9 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
 }
 
 static esp_err_t wifi_done_handler(httpd_req_t *req) {
-    const char resp[] = "<h2>保存しました</h2><a href='/'>戻る</a>";
+    const char resp[] = "<h2>Wi-Fi情報を保存しました</h2>"
+        "<p>設定が反映されるまで数秒お待ちください。</p>"
+        "<a href='/'>設定画面に戻る</a>";
     httpd_resp_set_type(req, "text/html; charset=UTF-8");
     httpd_resp_sendstr(req, resp);
     return ESP_OK;
@@ -132,6 +142,6 @@ void start_wifi_config_server(void) {
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server, &done_uri);
-        ESP_LOGI(TAG, "Wi-Fi設定Webサーバ起動");
+        ESP_LOGI(TAG, "Wi-Fi設定Webサーバ起動: PCやスマホで http://192.168.4.1/ にアクセスしてください");
     }
 }

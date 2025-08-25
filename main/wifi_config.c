@@ -46,16 +46,45 @@ esp_err_t wifi_config_softap_start(void) {
             .channel = WIFI_SOFTAP_CHANNEL,
             .password = WIFI_SOFTAP_PASS,
             .max_connection = WIFI_MAX_STA_CONN,
-            .authmode = WIFI_AUTH_WPA_WPA2_PSK
+            .authmode = WIFI_AUTH_WPA_WPA2_PSK,
+            .ssid_hidden = 0, // SSIDをブロードキャスト
+
         },
+    };
+    wifi_country_t country_config = {
+        .cc = "JP",
+        .schan = 1,
+        .nchan = 13,
+        .policy = WIFI_COUNTRY_POLICY_MANUAL
     };
     if (strlen(WIFI_SOFTAP_PASS) == 0) {
         ap_config.ap.authmode = WIFI_AUTH_OPEN;
     }
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+    ESP_ERROR_CHECK(esp_wifi_set_country(&country_config));
     ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_LOGI(TAG, "SoftAP開始 SSID:%s PASS:%s", WIFI_SOFTAP_SSID, WIFI_SOFTAP_PASS);
+
+    // SoftAP情報の取得と表示
+    wifi_config_t current_ap;
+    ESP_ERROR_CHECK(esp_wifi_get_config(WIFI_IF_AP, &current_ap));
+    uint8_t mac[6];
+    ESP_ERROR_CHECK(esp_wifi_get_mac(WIFI_IF_AP, mac));
+    esp_netif_ip_info_t ip_info;
+    esp_netif_t* ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    if (ap_netif && esp_netif_get_ip_info(ap_netif, &ip_info) == ESP_OK) {
+        esp_wifi_set_max_tx_power(78);
+
+        ESP_LOGI(TAG, "SoftAP開始情報:");
+        ESP_LOGI(TAG, "  SSID: %s", (char*)current_ap.ap.ssid);
+        ESP_LOGI(TAG, "  PASS: %s", (char*)current_ap.ap.password);
+        ESP_LOGI(TAG, "  チャンネル: %d", current_ap.ap.channel);
+        ESP_LOGI(TAG, "  最大接続数: %d", current_ap.ap.max_connection);
+        ESP_LOGI(TAG, "  MAC: %02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        ESP_LOGI(TAG, "  IP: %s", ip4addr_ntoa((const ip4_addr_t*)&ip_info.ip));
+    } else {
+        ESP_LOGI(TAG, "SoftAP開始 SSID:%s PASS:%s", WIFI_SOFTAP_SSID, WIFI_SOFTAP_PASS);
+    }
     return ESP_OK;
 }
 
