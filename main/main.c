@@ -94,6 +94,48 @@ static volatile uint32_t valid_pulses = 0;         // 有効パルス数
 static volatile uint32_t unknown_pulses = 0;       // 不明パルス数
 static volatile uint32_t rejected_quality = 0;     // 品質不良で拒否された回数
 
+// 500円認識ログ用実体
+log_entry_t log_entries[MAX_LOG_ENTRIES] = {0};
+uint16_t log_count = 0;
+
+esp_err_t load_log_from_nvs(void) {
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (err != ESP_OK) return err;
+    size_t size = sizeof(log_entries);
+    err = nvs_get_blob(nvs_handle, "yen500_log", log_entries, &size);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        log_count = 0;
+        err = ESP_OK;
+    }
+    size_t count_size = sizeof(log_count);
+    nvs_get_u16(nvs_handle, "yen500_cnt", &log_count);
+    nvs_close(nvs_handle);
+    return err;
+}
+esp_err_t save_log_to_nvs(void) {
+    if (xSemaphoreTake(nvs_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) return ESP_ERR_TIMEOUT;
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK) { xSemaphoreGive(nvs_mutex); return err; }
+    nvs_set_blob(nvs_handle, "yen500_log", log_entries, log_count * sizeof(log_entry_t));
+    nvs_set_u16(nvs_handle, "yen500_cnt", log_count);
+    err = nvs_commit(nvs_handle);
+    nvs_close(nvs_handle);
+    xSemaphoreGive(nvs_mutex);
+    return err;
+}
+void add_500yen_log(time_t now) {
+    if (log_count < MAX_LOG_ENTRIES) {
+        log_entries[log_count].timestamp = (uint32_t)now;
+        log_count++;
+        save_log_to_nvs();
+    }
+}
+uint16_t get_500yen_count(void) {
+    return log_count;
+}
+
 // NVSから合計パルス数とWi-Fi情報(SSID/PASS)を読み込む関数
 esp_err_t load_bank_data_from_nvs(void)
 {
@@ -516,6 +558,8 @@ void coin_selector_task(void *pvParameters)
                             vTaskDelay(pdMS_TO_TICKS(4000));
                             memset(&bank_data, 0, sizeof(bank_data));
                             save_bank_data_to_nvs();
+                            // 500円硬貨投入ログの追加
+                            // add_500yen_log(now);
 
                             lcd_display_request(LCD_STATE_INSERT);
                         } else {

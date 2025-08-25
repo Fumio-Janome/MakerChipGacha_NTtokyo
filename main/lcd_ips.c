@@ -103,8 +103,8 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
         lcd_print_string(20, 270, buffer, color_black, color_back, 2);
         get_latest_time(buffer, 6);
         lcd_print_string(20, 295, buffer, color_black, color_back, 2);
-        //ここでMakerChip購入数を表示
-        snprintf(buffer, sizeof(buffer), "<%d>", 1234);
+        //MakerChip購入数を表示
+        snprintf(buffer, sizeof(buffer), "<%d>", get_500yen_count());
         lcd_print_string(90, 295, buffer, color_black, color_back, 2);
         break;
     case LCD_STATE_WIFI_WAIT:

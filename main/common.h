@@ -98,6 +98,21 @@ typedef struct {
 // 入金データ
 extern coin_data_t bank_data;
 
+// 500円認識ログ用
+#define MAX_LOG_ENTRIES 1000
+
+typedef struct {
+    uint32_t timestamp; // UNIX時刻
+} log_entry_t;
+
+extern log_entry_t log_entries[MAX_LOG_ENTRIES];
+extern uint16_t log_count;
+
+esp_err_t load_log_from_nvs(void);
+esp_err_t save_log_to_nvs(void);
+void add_500yen_log(time_t now);
+uint16_t get_500yen_count(void);
+
 // キューとセマフォのハンドル
 extern QueueHandle_t coin_event_queue;
 extern SemaphoreHandle_t nvs_mutex;  // NVS保存の排他制御用
