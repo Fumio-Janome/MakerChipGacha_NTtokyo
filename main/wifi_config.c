@@ -215,8 +215,11 @@ esp_err_t wifi_config_get_ip(char* ip_buf, size_t buf_len) {
 
 esp_err_t wifi_config_get_ntp_time(char* datetime_buf, size_t buf_len) {
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "ntp.nict.jp");
+    esp_sntp_setservername(0, NTP_SERVER_NAME);
     esp_sntp_init();
+    // 日本時間（JST）にタイムゾーンを設定
+    setenv("TZ", "JST-9", 1);
+    tzset();
     time_t now = 0;
     struct tm timeinfo = {0};
     int retry = 0;

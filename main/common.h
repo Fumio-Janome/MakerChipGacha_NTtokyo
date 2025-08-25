@@ -106,10 +106,13 @@ extern QueueHandle_t lcd_update_queue;  // LCD更新要求用キュー
 
 // LCD表示状態管理
 typedef enum {
+    LCD_STATE_TITLE,        // 画面：タイトル表示
+    LCD_STATE_STARTING,        // 画面：スタート表示
     LCD_STATE_INSERT,       // 画面：コイン挿入待ち
     LCD_STATE_AMOUNT,       // 画面：入金額表示
     LCD_STATE_PRESS_BUTTON, // 画面：ボタン押下待ち
-    LCD_STATE_THANKS        // 画面：サンキュー表示
+    LCD_STATE_THANKS,       // 画面：サンキュー表示
+    LCD_STATE_DATE_TIME     // 画面：日付・時刻表示
 } lcd_disp_state_t;
 
 // 関数プロトタイプ宣言

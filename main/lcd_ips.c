@@ -4,6 +4,7 @@
 #include "driver/gpio.h"
 #include "common.h"
 #include "lcd_ips.h"
+#include "esp_err.h"
 
 // LCD関連の変数
 static spi_device_handle_t lcd_spi = NULL;
@@ -15,14 +16,17 @@ extern uint32_t total_value;
 extern uint32_t total_pulse_count;
 
 // LCD描画色
-uint16_t color_back;     // 背景色
+uint16_t color_back;    // 背景色
+uint16_t color_title;   // タイトル色
+uint16_t color_title_back; // タイトル背景色
 uint16_t color_black;
 uint16_t color_green;
 
 // LCD描画本体
 static void lcd_draw_ui_title(void) {
-    lcd_print_string(25, 10, "MAKER CHIP", color_black, color_back, 2);
-    lcd_print_string(55, 40, "GACHA", color_black, color_back, 2);
+    lcd_print_string(25, 10, "MAKER CHIP", color_title, color_title_back, 2);
+    // lcd_print_string(55, 40, "GACHA", color_black, color_back, 2);
+    lcd_print_string(40, 40, "GACHA", color_title, color_title_back, 3);
 }
 static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
 // static void lcd_draw_ui(void) {
@@ -30,16 +34,32 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
     if (lcd_mutex && xSemaphoreTake(lcd_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
 
     // LCD描画色
-    color_back = rgb565(0, 105, 255);      // 背景色(青緑)
-    color_black = rgb565(255,255,255);
-    color_green = rgb565(200,150,255);
+    color_back = rgb565(0, 105, 255);       // 背景色(青緑)
+    color_title_back = color_back;          // タイトル背景色
+    color_title = rgb565(255, 100, 100);
+    color_black = rgb565(255, 255, 255);
+    color_green = rgb565(200, 150, 255);
 
-    lcd_fill_screen(color_back);
+    // lcd_fill_screen(color_back);
     char buffer[32];
     
     switch (lcd_state) {
+    case LCD_STATE_TITLE:
+        lcd_fill_screen(color_back);
+
+        lcd_print_string(25, 10, "MAKER CHIP", color_title, color_title_back, 2);
+        lcd_print_string(40, 40, "GACHA", color_title, color_title_back, 3);
+        break;
+    case LCD_STATE_STARTING:
+        lcd_fill_message_area(color_back);
+
+        lcd_print_string(20, 90, "STARTING", color_black, color_back, 3);
+        lcd_print_string(20, 130, "UP", color_black, color_back, 3);
+        lcd_print_string(20, 170, "PLEASE", color_black, color_back, 3);
+        lcd_print_string(20, 210, "WAIT", color_black, color_back, 3);
+        break;
     case LCD_STATE_INSERT:
-        lcd_draw_ui_title();
+        lcd_fill_message_area(color_back);
 
         lcd_print_string(20, 90, "PLEASE", color_black, color_back, 3);
         lcd_print_string(20, 130, "INSERT", color_black, color_back, 3);
@@ -47,7 +67,7 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
         lcd_print_string(20, 220, "YEN", color_black, color_back, 3);
         break;
     case LCD_STATE_AMOUNT:
-        lcd_draw_ui_title();
+        lcd_fill_message_area(color_back);
 
         lcd_print_string(20, 90, "CURRENT", color_black, color_back, 3);
         snprintf(buffer, sizeof(buffer), "%lu", (unsigned long)bank_data.total_value);
@@ -59,21 +79,31 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
         lcd_print_string(90, 220, "YEN", color_black, color_back, 3);
         break;
     case LCD_STATE_PRESS_BUTTON:
-        lcd_draw_ui_title();
+        lcd_fill_message_area(color_back);
 
         lcd_print_string(20, 90, "PLEASE", color_black, color_back, 3);
         lcd_print_string(20, 130, "PUSH", color_black, color_back, 3);
         lcd_print_string(20, 170, "BUTTON", color_green, color_back, 3);
         break;
     case LCD_STATE_THANKS:
-        lcd_draw_ui_title();
+        lcd_fill_message_area(color_back);
 
         lcd_print_string(20, 90, "THANK", color_black, color_back, 4);
         lcd_print_string(20, 130, "YOU", color_black, color_back, 4);
         lcd_print_string(20, 170, "SO", color_black, color_back, 4);
         lcd_print_string(20, 220, "MUCH!!", color_black, color_back, 4);
         break;
+    case LCD_STATE_DATE_TIME:
+        lcd_fill_datetime_area(color_back);
+
+        snprintf(buffer, sizeof(buffer), "%04d/%02d/%02d", 2025, 8, 21);
+        lcd_print_string(20, 270, buffer, color_black, color_back, 2);
+
+        snprintf(buffer, sizeof(buffer), "%02d:%02d <%d>", 12, 34, 1234);
+        lcd_print_string(20, 295, buffer, color_black, color_back, 2);
+        break;
     }
+    
     if (lcd_mutex) xSemaphoreGive(lcd_mutex);
 }
 
@@ -216,6 +246,48 @@ void lcd_fill_screen(uint16_t color) {
     
     // ESP_LOGI(TAG, "画面塗りつぶし完了");
 }
+
+    // メッセージエリアのみ塗りつぶし（POSI_Y_MESSAGE～POSI_Y_DATE_TIME-1）
+    void lcd_fill_message_area(uint16_t color) {
+        if (!lcd_initialized) {
+            ESP_LOGW(TAG, "LCD未初期化のため塗りつぶしをスキップ");
+            return;
+        }
+        lcd_set_addr_window(0, POSI_Y_MESSAGE, LCD_WIDTH - 1, POSI_Y_DATE_TIME - 1);
+        const int CHUNK_SIZE = 1024;
+        int total_pixels = LCD_WIDTH * (POSI_Y_DATE_TIME - POSI_Y_MESSAGE);
+        int sent_pixels = 0;
+        while (sent_pixels < total_pixels) {
+            int chunk_pixels = (total_pixels - sent_pixels > CHUNK_SIZE) ? CHUNK_SIZE : (total_pixels - sent_pixels);
+            esp_err_t ret = lcd_send_color_data(color, chunk_pixels);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "メッセージエリア塗りつぶし失敗 (ピクセル位置: %d): %s", sent_pixels, esp_err_to_name(ret));
+                return;
+            }
+            sent_pixels += chunk_pixels;
+        }
+    }
+
+    // 日時エリアのみ塗りつぶし（POSI_Y_DATE_TIME～LCD_HEIGHT-1）
+    void lcd_fill_datetime_area(uint16_t color) {
+        if (!lcd_initialized) {
+            ESP_LOGW(TAG, "LCD未初期化のため塗りつぶしをスキップ");
+            return;
+        }
+        lcd_set_addr_window(0, POSI_Y_DATE_TIME, LCD_WIDTH - 1, LCD_HEIGHT - 1);
+        const int CHUNK_SIZE = 1024;
+        int total_pixels = LCD_WIDTH * (LCD_HEIGHT - POSI_Y_DATE_TIME);
+        int sent_pixels = 0;
+        while (sent_pixels < total_pixels) {
+            int chunk_pixels = (total_pixels - sent_pixels > CHUNK_SIZE) ? CHUNK_SIZE : (total_pixels - sent_pixels);
+            esp_err_t ret = lcd_send_color_data(color, chunk_pixels);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "日時エリア塗りつぶし失敗 (ピクセル位置: %d): %s", sent_pixels, esp_err_to_name(ret));
+                return;
+            }
+            sent_pixels += chunk_pixels;
+        }
+    }
 
 // 簡易5x7フォント（数字と基本文字のみ、1.47インチ用に追加文字）
 static const uint8_t font5x7[][5] = {

@@ -635,15 +635,17 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "NVSが初期化されました");
 
-        // ネットワーク初期化は一度だけ
-        ESP_ERROR_CHECK(esp_netif_init());
-        ESP_ERROR_CHECK(esp_event_loop_create_default());
+    // ネットワーク初期化は一度だけ
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
     esp_netif_create_default_wifi_ap();
     esp_netif_create_default_wifi_sta();
-        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-        ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
-        ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
 
     // 保存された合計パルス数を読み込み
     load_bank_data_from_nvs();
@@ -719,8 +721,9 @@ void app_main(void)
         // ESP_LOGI(TAG, "LCD初期化が完了しました");
         // 初期画面表示要求はdisplay_bank_status()に統一
     }
-    lcd_display_request(LCD_STATE_INSERT); // 初期画面表示要求
-    
+    lcd_display_request(LCD_STATE_TITLE); // タイトル画面表示要求
+    lcd_display_request(LCD_STATE_STARTING);    //起動中画面表示
+
     // ボタンの初期状態を確認
     int initial_button_state = gpio_get_level(RESET_BUTTON_PIN);
     ESP_LOGI(TAG, "リセットボタン初期状態: %d （0=押下、1=未押下）", initial_button_state);
