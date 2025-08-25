@@ -25,6 +25,10 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id
 
 #define NTP_SERVER_NAME "ntp.nict.jp"
 
+#define WIFI_SOFTAP_SSID "Cerevo_MakerChipGacha"
+#define WIFI_SOFTAP_PASS "12345678"
+
+
 esp_err_t wifi_config_softap_start(void);
 esp_err_t wifi_config_sta_connect(void);
 esp_err_t wifi_config_load(void);

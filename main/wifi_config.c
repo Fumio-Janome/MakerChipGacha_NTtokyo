@@ -1,8 +1,12 @@
+// デバッグタスク用: 必要なヘッダ
+#include <stdbool.h>
+#include <string.h>
 // 必要なヘッダを整理し、TAGはcommon.hのものを利用
 #include "common.h"
 #include "wifi_config.h"
 #include "web_config.h"
 #include <string.h>
+#include <stdint.h>
 #include <stddef.h>
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -10,7 +14,6 @@
 #include "esp_err.h"
 #include "nvs_flash.h"
 #include "nvs.h"
-
 #include "esp_sntp.h"
 #include "lwip/inet.h"
 #include "freertos/FreeRTOS.h"
@@ -160,7 +163,12 @@ esp_err_t wifi_config_sta_connect(void) {
     ESP_LOGI(TAG, "WiFi STA接続開始: SSID=%s", ssid);
     EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(10000));
     if (!(bits & WIFI_CONNECTED_BIT)) {
-        ESP_LOGE(TAG, "WiFi接続失敗");
+        ESP_LOGE(TAG, "WiFi接続失敗: APのみモードへ切替");
+        // STAをstopし、APのみモードへ
+        esp_wifi_disconnect();
+        vTaskDelay(pdMS_TO_TICKS(500));
+        esp_wifi_set_mode(WIFI_MODE_AP);
+        ESP_LOGI(TAG, "APのみモードへ切替完了");
         return ESP_FAIL;
     }
     return ESP_OK;
@@ -176,34 +184,41 @@ esp_err_t wifi_config_get_ip(char* ip_buf, size_t buf_len) {
 }
 
 esp_err_t wifi_config_get_ntp_time(char* datetime_buf, size_t buf_len) {
-    static bool sntp_initialized = false;
-    if (!sntp_initialized) {
-        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-        esp_sntp_setservername(0, NTP_SERVER_NAME);
-        esp_sntp_init();
-        // 日本時間（JST）にタイムゾーンを設定
-        setenv("TZ", "JST-9", 1);
-        tzset();
-        sntp_initialized = true;
-    }
-    time_t now = 0;
-    struct tm timeinfo = {0};
-    int retry = 0;
-    const int retry_count = 10;
-    while (timeinfo.tm_year < (2016 - 1900) && ++retry < retry_count) {
-        ESP_LOGI(TAG, "NTP時刻待機中...");
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-        time(&now);
-        localtime_r(&now, &timeinfo);
-    }
-    if (timeinfo.tm_year < (2016 - 1900)) {
-        lcd_show_request(LCD_STATE_WIFI_NG); // LCDにWi-Fi接続失敗を表示
-        ESP_LOGE(TAG, "NTP時刻取得失敗");
-        return ESP_FAIL;
-    }
-    strftime(datetime_buf, buf_len, "%Y-%m-%d %H:%M:%S", &timeinfo);
-    ESP_LOGI(TAG, "NTP時刻取得: %s", datetime_buf);
-    return ESP_OK;
+        // STA接続済みかどうかをチェック
+        if (wifi_event_group == NULL ||
+            (xEventGroupGetBits(wifi_event_group) & WIFI_CONNECTED_BIT) == 0) {
+            ESP_LOGW(TAG, "STA未接続のためNTP取得スキップ");
+            return ESP_FAIL;
+        }
+
+        static bool sntp_initialized = false;
+        if (!sntp_initialized) {
+            esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+            esp_sntp_setservername(0, NTP_SERVER_NAME);
+            esp_sntp_init();
+            // 日本時間（JST）にタイムゾーンを設定
+            setenv("TZ", "JST-9", 1);
+            tzset();
+            sntp_initialized = true;
+        }
+        time_t now = 0;
+        struct tm timeinfo = {0};
+        int retry = 0;
+        const int retry_count = 10;
+        while (timeinfo.tm_year < (2016 - 1900) && ++retry < retry_count) {
+            // ESP_LOGI(TAG, "NTP時刻待機中...");
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+            time(&now);
+            localtime_r(&now, &timeinfo);
+        }
+        if (timeinfo.tm_year < (2016 - 1900)) {
+            lcd_show_request(LCD_STATE_WIFI_NG); // LCDにWi-Fi接続失敗を表示
+            ESP_LOGE(TAG, "NTP時刻取得失敗");
+            return ESP_FAIL;
+        }
+        strftime(datetime_buf, buf_len, "%Y-%m-%d %H:%M:%S", &timeinfo);
+        ESP_LOGI(TAG, "NTP時刻取得: %s", datetime_buf);
+        return ESP_OK;
 }
 
 // NTPを定期的に取得し、最新時刻を保持するタスク
@@ -248,6 +263,70 @@ void ntp_update_task(void *pvParameters) {
     }
 }
 
+// SoftAPのSSIDが消えた場合に自動復旧する監視タスク
+static void softap_monitor_task(void *pvParameters) {
+    // 必要なマクロ・定数が参照できるようにする
+    #include "esp_err.h"
+    static const char *softap_ssid = WIFI_SOFTAP_SSID;
+    static const char *softap_pass = WIFI_SOFTAP_PASS;
+    static const int softap_channel = 1;
+    static const int softap_max_conn = 1;
+    int empty_count = 0;
+    while (1) {
+        wifi_mode_t mode;
+        wifi_config_t ap_cfg;
+        esp_err_t err_mode = esp_wifi_get_mode(&mode);
+        esp_err_t err_cfg = esp_wifi_get_config(WIFI_IF_AP, &ap_cfg);
+        // ESP_LOGI(TAG, "[SoftAP監視] 取得: err_mode=%d, err_cfg=%d, mode=%d", err_mode, err_cfg, mode);
+        if (err_mode == ESP_OK && err_cfg == ESP_OK) {
+            // ESP_LOGI(TAG, "[SoftAP監視] 現在のSSID: '%s' (len=%d) channel=%d max_conn=%d authmode=%d hidden=%d", 
+            //     (char*)ap_cfg.ap.ssid, ap_cfg.ap.ssid_len, ap_cfg.ap.channel, ap_cfg.ap.max_connection, ap_cfg.ap.authmode, ap_cfg.ap.ssid_hidden);
+            // AP/STAモードでない場合のみ再設定
+            if (!(mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA)) {
+                ESP_LOGW(TAG, "SoftAPモードでないため再設定 (mode=%d)", mode);
+                esp_err_t ret = esp_wifi_set_mode(WIFI_MODE_APSTA);
+                ESP_LOGW(TAG, "esp_wifi_set_mode: %d", ret);
+                if (ret == ESP_OK) {
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+                    ret = esp_wifi_start();
+                    ESP_LOGW(TAG, "esp_wifi_start: %d", ret);
+                }
+            } else if (ap_cfg.ap.ssid[0] == '\0') {
+                empty_count++;
+                ESP_LOGW(TAG, "SoftAP SSIDが空(%d回目)。ap_cfg.ap.ssid_len=%d", empty_count, ap_cfg.ap.ssid_len);
+                // 3回連続で空なら再設定
+                if (empty_count >= 3) {
+                    ESP_LOGW(TAG, "SoftAP SSIDが3回連続で空。再設定");
+                    wifi_config_t ap_config = {0};
+                    strncpy((char*)ap_config.ap.ssid, softap_ssid, sizeof(ap_config.ap.ssid));
+                    ap_config.ap.ssid_len = strlen(softap_ssid);
+                    ap_config.ap.channel = softap_channel;
+                    strncpy((char*)ap_config.ap.password, softap_pass, sizeof(ap_config.ap.password));
+                    ap_config.ap.max_connection = softap_max_conn;
+                    ap_config.ap.authmode = (strlen(softap_pass) == 0) ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA_WPA2_PSK;
+                    ap_config.ap.ssid_hidden = 0;
+                    // ESP_LOGI(TAG, "[SoftAP監視] 再設定: ssid='%s' len=%d channel=%d max_conn=%d authmode=%d hidden=%d", 
+                    //     (char*)ap_config.ap.ssid, ap_config.ap.ssid_len, ap_config.ap.channel, ap_config.ap.max_connection, ap_config.ap.authmode, ap_config.ap.ssid_hidden);
+                    esp_err_t ret = esp_wifi_set_config(WIFI_IF_AP, &ap_config);
+                    ESP_LOGW(TAG, "esp_wifi_set_config: %d", ret);
+                    if (ret == ESP_OK) {
+                        vTaskDelay(pdMS_TO_TICKS(1000));
+                        ret = esp_wifi_start();
+                        ESP_LOGW(TAG, "esp_wifi_start: %d", ret);
+                    }
+                    empty_count = 0;
+                }
+            } else {
+                // ESP_LOGI(TAG, "[SoftAP監視] SSIDは正常: '%s'", (char*)ap_cfg.ap.ssid);
+                empty_count = 0;
+            }
+        } else {
+            ESP_LOGW(TAG, "SoftAP情報取得失敗: mode=%d cfg=%d", err_mode, err_cfg);
+        }
+        vTaskDelay(pdMS_TO_TICKS(10000)); // 10秒ごとに監視
+    }
+}
+
 // 年月日（YYYY-MM-DD）を取得
 void get_latest_date(char *buf, size_t len) {
     strncpy(buf, latest_date, len);
@@ -257,6 +336,47 @@ void get_latest_date(char *buf, size_t len) {
 void get_latest_time(char *buf, size_t len) {
     strncpy(buf, latest_time, len);
     buf[len-1] = '\0';
+}
+
+// SoftAP自身のSSIDがスキャンで見えるか確認するデバッグタスク
+static void softap_selfscan_task(void *pvParameters) {
+    while (1) {
+        wifi_scan_config_t scan_config = {
+            .ssid = NULL,
+            .bssid = NULL,
+            .channel = 0,
+            .show_hidden = true
+        };
+        ESP_LOGI(TAG, "[SoftAP自己スキャン] スキャン開始");
+        esp_err_t err = esp_wifi_scan_start(&scan_config, true);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "[SoftAP自己スキャン] scan_start失敗: %d", err);
+        } else {
+            uint16_t ap_num = 0;
+            esp_wifi_scan_get_ap_num(&ap_num);
+            wifi_ap_record_t *ap_list = calloc(ap_num, sizeof(wifi_ap_record_t));
+            if (ap_list && ap_num > 0) {
+                esp_wifi_scan_get_ap_records(&ap_num, ap_list);
+                bool found = false;
+                const char *my_ssid = WIFI_SOFTAP_SSID;
+                for (int i = 0; i < ap_num; ++i) {
+                    ESP_LOGI(TAG, "[SoftAP自己スキャン] 発見SSID: '%s'", (char*)ap_list[i].ssid);
+                    if (strcmp((char*)ap_list[i].ssid, my_ssid) == 0) {
+                        found = true;
+                    }
+                }
+                if (found) {
+                    ESP_LOGI(TAG, "[SoftAP自己スキャン] 自分のSSID '%s' を検出!", my_ssid);
+                } else {
+                    ESP_LOGW(TAG, "[SoftAP自己スキャン] 自分のSSID '%s' は検出できず", my_ssid);
+                }
+                free(ap_list);
+            } else {
+                ESP_LOGW(TAG, "[SoftAP自己スキャン] APリスト取得失敗または0件");
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10000)); // 10秒ごと
+    }
 }
 
 // Wi-Fiセットアップ・NTP取得を別タスクで実行する関数
@@ -273,6 +393,11 @@ static void wifi_setup_task(void *pvParameters) {
     ESP_LOGI(TAG, "SoftAP+Webサーバ起動");
     wifi_config_softap_start();
     start_wifi_config_server();
+
+    // SoftAP監視タスク起動
+    xTaskCreate(softap_monitor_task, "softap_monitor", 4096, NULL, 2, NULL);
+    // // SoftAP自己スキャンデバッグタスク起動
+    // xTaskCreate(softap_selfscan_task, "softap_selfscan", 4096, NULL, 1, NULL);
 
     // SSID/PASSが保存されていればSTA接続＆NTP取得
     vTaskDelay(pdMS_TO_TICKS(5000)); // Web設定待ち猶予（5秒）
