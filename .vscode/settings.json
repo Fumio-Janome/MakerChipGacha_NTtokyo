@@ -1,0 +1,19 @@
+{
+  "idf.flashType": "UART",
+  "idf.portWin": "COM46",
+  "idf.openOcdConfigs": [
+    "board/esp32c3-builtin.cfg"
+  ],
+  "idf.customExtraVars": {
+    "OPENOCD_SCRIPTS": "C:\\Espressif\\tools\\openocd-esp32\\v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts",
+    "IDF_CCACHE_ENABLE": "1",
+    "ESP_ROM_ELF_DIR": "C:\\Espressif\\tools\\esp-rom-elfs\\20230320/",
+    "IDF_TARGET": "esp32c3"
+  },
+  "clangd.path": "C:\\Espressif\\tools\\esp-clang\\esp-18.1.2_20240912\\esp-clang\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=C:\\Espressif\\tools\\riscv32-esp-elf\\esp-14.2.0_20241119\\riscv32-esp-elf\\bin\\riscv32-esp-elf-gcc.exe",
+    "--compile-commands-dir=c:\\_Cerevo\\development\\ESP32\\workspace\\MakerChipGacha\\Gacha_100-500_LCD(IPS---)\\build"
+  ]
+}

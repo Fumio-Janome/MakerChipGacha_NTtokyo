@@ -1,0 +1,69 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "ESP-IDF Build",
+			"type": "shell",
+			"command": "idf.py",
+			"args": [
+				"build"
+			],
+			"group": "build",
+			"problemMatcher": [
+				"$gcc"
+			],
+			"isBackground": false,
+			"detail": "ESP-IDFプロジェクトをビルドします"
+		},
+		{
+			"label": "ESP-IDF Flash",
+			"type": "shell",
+			"command": "idf.py",
+			"args": ["-p", "COM3", "flash"],
+			"group": "build",
+			"isBackground": false,
+			"problemMatcher": [],
+			"detail": "ビルドしたファームウェアをESP32-C3にフラッシュします"
+		},
+		{
+			"label": "ESP-IDF Monitor",
+			"type": "shell",
+			"command": "idf.py",
+			"args": ["-p", "COM3", "monitor"],
+			"group": "test",
+			"isBackground": true,
+			"problemMatcher": [],
+			"detail": "シリアルモニターを開始します"
+		},
+		{
+			"label": "ESP-IDF Flash and Monitor",
+			"type": "shell",
+			"command": "idf.py",
+			"args": ["-p", "COM3", "flash", "monitor"],
+			"group": "build",
+			"isBackground": true,
+			"problemMatcher": [],
+			"detail": "フラッシュ後、モニターを開始します"
+		},
+		{
+			"label": "ESP-IDF Clean",
+			"type": "shell",
+			"command": "idf.py",
+			"args": ["clean"],
+			"group": "build",
+			"isBackground": false,
+			"problemMatcher": [],
+			"detail": "ビルドファイルをクリーンします"
+		},
+		{
+			"label": "ESP-IDF Menuconfig",
+			"type": "shell",
+			"command": "idf.py",
+			"args": ["menuconfig"],
+			"group": "build",
+			"isBackground": false,
+			"problemMatcher": [],
+			"detail": "プロジェクト設定メニューを開きます"
+		}
+	]
+}
