@@ -6,6 +6,7 @@
 #include "esp_http_server.h"
 #include <ctype.h>
 #include "nvs_flash.h"
+#include "esp_system.h" // esp_restart用
 
 static const char *TAG = "web_config";
 
@@ -76,6 +77,8 @@ static esp_err_t wifi_post_handler(httpd_req_t *req) {
     httpd_resp_set_status(req, "303 See Other");
     httpd_resp_set_hdr(req, "Location", "/done");
     httpd_resp_sendstr(req, "");
+    vTaskDelay(pdMS_TO_TICKS(500)); // 応答送信のため少し待つ
+    esp_restart();
     return ESP_OK;
 }
 

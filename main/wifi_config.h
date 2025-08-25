@@ -8,6 +8,10 @@ extern "C" {
 
 // 他の宣言...
 
+// Wi-Fiイベントグループを他ファイルから参照できるようにextern宣言
+#include "freertos/event_groups.h"
+extern EventGroupHandle_t wifi_event_group;
+
 // Wi-Fiイベントハンドラをmain.cから参照できるようにextern宣言
 void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 

@@ -14,6 +14,15 @@
 
 // Wi-Fiセットアップ・NTP取得を別タスクで実行する関数
 static void wifi_setup_task(void *pvParameters) {
+    // イベントグループ初期化（初回のみ）
+    if (wifi_event_group == NULL) {
+        wifi_event_group = xEventGroupCreate();
+        if (wifi_event_group == NULL) {
+            ESP_LOGE(TAG, "wifi_event_group作成失敗");
+            vTaskDelete(NULL);
+            return;
+        }
+    }
     ESP_LOGI(TAG, "SoftAP+Webサーバ起動");
     wifi_config_softap_start();
     start_wifi_config_server();
@@ -55,8 +64,9 @@ void start_wifi_setup_task(void) {
 #define WIFI_SOFTAP_CHANNEL 1
 #define WIFI_MAX_STA_CONN 1
 
+#include "freertos/event_groups.h"
 // TAGはcommon.hで定義済み
-static EventGroupHandle_t wifi_event_group;
+EventGroupHandle_t wifi_event_group = NULL;
 #define WIFI_CONNECTED_BIT BIT0
 
 void wifi_event_handler(void* arg, esp_event_base_t event_base,
@@ -69,14 +79,14 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base,
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         ESP_LOGI(TAG, "IPアドレス取得");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGI(TAG, "WiFi切断、再接続試行");
+        // ESP_LOGI(TAG, "WiFi切断、再接続試行");
         esp_wifi_connect();
     }
 }
 
 esp_err_t wifi_config_softap_start(void) {
-    // NVS, esp_netif, APインターフェースの初期化はapp_mainで一度だけ行う
-        wifi_config_t ap_config = {
+    // AP+STA同時モードで両方の設定をセット
+    wifi_config_t ap_config = {
         .ap = {
             .ssid = WIFI_SOFTAP_SSID,
             .ssid_len = strlen(WIFI_SOFTAP_SSID),
@@ -84,10 +94,23 @@ esp_err_t wifi_config_softap_start(void) {
             .password = WIFI_SOFTAP_PASS,
             .max_connection = WIFI_MAX_STA_CONN,
             .authmode = WIFI_AUTH_WPA_WPA2_PSK,
-            .ssid_hidden = 0, // SSIDをブロードキャスト
-
+            .ssid_hidden = 0,
         },
     };
+    wifi_config_t sta_config = {0};
+    // NVSからSTA設定を取得
+    nvs_handle_t nvs;
+    char ssid[33] = {0};
+    char pass[65] = {0};
+    size_t ssid_len = sizeof(ssid);
+    size_t pass_len = sizeof(pass);
+    if (nvs_open(WIFI_CONFIG_NAMESPACE, NVS_READONLY, &nvs) == ESP_OK) {
+        nvs_get_str(nvs, WIFI_CONFIG_SSID_KEY, ssid, &ssid_len);
+        nvs_get_str(nvs, WIFI_CONFIG_PASS_KEY, pass, &pass_len);
+        nvs_close(nvs);
+        strncpy((char*)sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid));
+        strncpy((char*)sta_config.sta.password, pass, sizeof(sta_config.sta.password));
+    }
     wifi_country_t country_config = {
         .cc = "JP",
         .schan = 1,
@@ -97,8 +120,9 @@ esp_err_t wifi_config_softap_start(void) {
     if (strlen(WIFI_SOFTAP_PASS) == 0) {
         ap_config.ap.authmode = WIFI_AUTH_OPEN;
     }
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
     ESP_ERROR_CHECK(esp_wifi_set_country(&country_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
@@ -153,13 +177,7 @@ esp_err_t wifi_config_load(void) {
 }
 
 esp_err_t wifi_config_sta_connect(void) {
-    wifi_event_group = xEventGroupCreate();
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-        ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-        IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
+    // NVSからSTA設定を取得し、STA設定のみ上書き
     nvs_handle_t nvs;
     char ssid[33] = {0};
     char pass[65] = {0};
@@ -176,9 +194,7 @@ esp_err_t wifi_config_sta_connect(void) {
     wifi_config_t wifi_config = {0};
     strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
     strncpy((char*)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
     ESP_LOGI(TAG, "WiFi STA接続開始: SSID=%s", ssid);
     EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(10000));
     if (!(bits & WIFI_CONNECTED_BIT)) {
