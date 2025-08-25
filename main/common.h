@@ -112,7 +112,9 @@ typedef enum {
     LCD_STATE_AMOUNT,       // 画面：入金額表示
     LCD_STATE_PRESS_BUTTON, // 画面：ボタン押下待ち
     LCD_STATE_THANKS,       // 画面：サンキュー表示
-    LCD_STATE_DATE_TIME     // 画面：日付・時刻表示
+    LCD_STATE_DATE_TIME,    // 画面：日付・時刻表示
+    LCD_STATE_WIFI_WAIT,    // 画面：Wi-Fi接続待ち
+    LCD_STATE_WIFI_NG       // 画面：Wi-Fi接続失敗
 } lcd_disp_state_t;
 
 // 関数プロトタイプ宣言

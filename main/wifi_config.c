@@ -197,6 +197,7 @@ esp_err_t wifi_config_get_ntp_time(char* datetime_buf, size_t buf_len) {
         localtime_r(&now, &timeinfo);
     }
     if (timeinfo.tm_year < (2016 - 1900)) {
+        lcd_show_request(LCD_STATE_WIFI_NG); // LCDにWi-Fi接続失敗を表示
         ESP_LOGE(TAG, "NTP時刻取得失敗");
         return ESP_FAIL;
     }
@@ -207,12 +208,18 @@ esp_err_t wifi_config_get_ntp_time(char* datetime_buf, size_t buf_len) {
 
 // NTPを定期的に取得し、最新時刻を保持するタスク
 static char latest_datetime[32] = "";
-static char latest_date[16] = "";
-static char latest_time[16] = "";
+static char latest_date[16] = "WIFI";
+static char latest_time[16] = "NOT CONNECT";
 
 void ntp_update_task(void *pvParameters) {
+    time_t now = 0;
+    struct tm timeinfo = {0};
+    int sec;
+    int delay_ms;
     while (1) {
         char buf[32] = "";
+
+        delay_ms = 60000;
         if (wifi_config_get_ntp_time(buf, sizeof(buf)) == ESP_OK) {
             strncpy(latest_datetime, buf, sizeof(latest_datetime));
             // 年月日（YYYY-MM-DD）
@@ -225,22 +232,18 @@ void ntp_update_task(void *pvParameters) {
             } else {
                 latest_time[0] = '\0';
             }
-        }
-        lcd_show_request(LCD_STATE_DATE_TIME);  // LCDに日時指示を表示
+            lcd_show_request(LCD_STATE_DATE_TIME);  // LCDに日時指示を表示
 
-        // 0秒±5秒の範囲なら60秒待機、それ以外は次の0秒-5秒まで待機
-        time_t now = 0;
-        struct tm timeinfo = {0};
-        time(&now);
-        localtime_r(&now, &timeinfo);
-        int sec = timeinfo.tm_sec;
-        int delay_ms;
-        if (sec <= 5) {
-            delay_ms = 60000; // 0秒±5秒の範囲なら60秒
-        } else {
-            delay_ms = ((60 - sec) + 0) * 1000; // 次の0秒まで
-            if (delay_ms < 0) delay_ms = 1000; // 念のため
+            // 0秒±5秒の範囲なら60秒待機、それ以外は次の0秒-5秒まで待機
+            time(&now);
+            localtime_r(&now, &timeinfo);
+            sec = timeinfo.tm_sec;
+            if (sec > 5) {
+                delay_ms = ((60 - sec) + 0) * 1000; // 次の0秒まで
+                if (delay_ms < 0) delay_ms = 1000; // 念のため
+            }
         }
+
         vTaskDelay(pdMS_TO_TICKS(delay_ms));
     }
 }
@@ -286,7 +289,7 @@ static void wifi_setup_task(void *pvParameters) {
         ESP_LOGW(TAG, "Wi-Fi STA接続失敗。Webで設定してください");
     }
     lcd_show_request(LCD_STATE_INSERT);     // LCDに挿入指示を表示
-    // lcd_show_request(LCD_STATE_DATE_TIME);  // LCDに日時指示を表示
+    lcd_show_request(LCD_STATE_WIFI_WAIT);  // LCDにWi-Fi接続待ちを表示
 
     xTaskCreate(ntp_update_task, "ntp_update", 2048, NULL, 3, NULL);
     vTaskDelete(NULL);

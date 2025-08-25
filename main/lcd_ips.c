@@ -22,6 +22,7 @@ uint16_t color_title;   // タイトル色
 uint16_t color_title_back; // タイトル背景色
 uint16_t color_black;
 uint16_t color_green;
+uint16_t color_red;
 
 // // LCD描画本体
 // static void lcd_draw_ui_title(void) {
@@ -40,6 +41,7 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
     color_title = rgb565(255, 100, 100);
     color_black = rgb565(255, 255, 255);
     color_green = rgb565(200, 150, 255);
+    color_red = rgb565(255, 0, 0);
 
     // lcd_fill_screen(color_back);
     char buffer[32];
@@ -97,18 +99,25 @@ static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
     case LCD_STATE_DATE_TIME:
         lcd_fill_datetime_area(color_back);
 
-        // snprintf(buffer, sizeof(buffer), "%04d/%02d/%02d", 2025, 8, 21);
         get_latest_date(buffer, 12);
         lcd_print_string(20, 270, buffer, color_black, color_back, 2);
-
-        // snprintf(buffer, sizeof(buffer), "%02d:%02d <%d>", 12, 34, 1234);
         get_latest_time(buffer, 6);
         lcd_print_string(20, 295, buffer, color_black, color_back, 2);
-
         //ここでMakerChip購入数を表示
         snprintf(buffer, sizeof(buffer), "<%d>", 1234);
-        // get_latest_time(buffer, 6);
         lcd_print_string(90, 295, buffer, color_black, color_back, 2);
+        break;
+    case LCD_STATE_WIFI_WAIT:
+        lcd_fill_datetime_area(color_back);
+
+        lcd_print_string(20, 270, "WAIT FOR", color_red, color_back, 2);
+        lcd_print_string(20, 295, "WIFI CONNECT", color_red, color_back, 2);
+        break;
+    case LCD_STATE_WIFI_NG:
+        lcd_fill_datetime_area(color_back);
+
+        lcd_print_string(20, 270, "WIFI", color_red, color_back, 2);
+        lcd_print_string(20, 295, "CONNECT FAIL", color_red, color_back, 2);
         break;
     }
     
