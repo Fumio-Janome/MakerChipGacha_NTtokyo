@@ -27,10 +27,21 @@ static const char *TAG = "MC_GACHA";
 // static const char *TAG_LCD_I2C = "LCD_I2C";
 
 // NVS設定(15文字以内で定義)
-#define NVS_NAMESPACE "makerchip_gacha"
-#define NVS_KEY_TOTAL_COINS "total_coins"
-#define NVS_KEY_TOTAL_VALUE "total_value"
-#define NVS_KEY_COIN_COUNT "coin_count"
+// #define NVS_NAMESPACE "makerchip_gacha"
+// #define NVS_KEY_TOTAL_COINS "total_coins"
+// #define NVS_KEY_TOTAL_VALUE "total_value"
+// #define NVS_KEY_COIN_COUNT "coin_count"
+
+//NTP取得接続アクセスポイント設定NVS保存キー
+#define WIFI_CONFIG_NAMESPACE "wifi_cfg"
+#define WIFI_CONFIG_SSID_KEY "wifi_ssid"
+#define WIFI_CONFIG_PASS_KEY "wifi_pass"
+//NTP取得接続アクセスポイント設定NVS保存キー
+#define BUY_LOG_NAMESPACE   "chip_buy_log"
+#define BUY_LOGS            "buy_log"
+#define BUY_COUNT           "buy_count"
+
+
 
 #if 1
 // GPIO定義（ESP32-C3 Mini）
@@ -69,11 +80,15 @@ static const char *TAG = "MC_GACHA";
 #define DEBOUNCE_TIME_MS 5              // デバウンス時間（最速化）
 #define PULSE_WIDTH_MS 30               // 実際のパルス幅
 #define PULSE_TIMEOUT_MS 400            // パルス列タイムアウト（2パルス分）
-#define RESET_HOLD_TIME_MS 3000         // リセットボタン長押し時間
 #define MIN_PULSE_INTERVAL_MS 10        // 最小パルス間隔（最速化）
 #define MAX_PULSE_INTERVAL_MS 250       // 最大パルス間隔（1.25パルス分）
 #define MAX_PULSE_COUNT 15              // 最大パルス数（超過で強制分割）
 
+//BOOTボタン長押し時間
+#define LOG_LIST_TIME_MS  100           // ログ一覧表示
+#define LOG_CLEAR_TIME_MS 5000          // ログクリア
+#define NVS_FORMAT_TIME_MS 10000        // NVSエリアフォーマット時間
+// #define RESET_HOLD_TIME_MS 3000         // リセットボタン長押し時間
 
 // 硬貨の種類定義
 typedef enum {
@@ -110,8 +125,8 @@ extern uint16_t log_count;
 
 esp_err_t load_log_from_nvs(void);
 esp_err_t save_log_to_nvs(void);
-void add_500yen_log(time_t now);
-uint16_t get_500yen_count(void);
+void add_chip_buy_log(time_t now);
+uint16_t get_chip_buy_count(void);
 
 // キューとセマフォのハンドル
 extern QueueHandle_t coin_event_queue;
@@ -132,10 +147,12 @@ typedef enum {
     LCD_STATE_WIFI_NG       // 画面：Wi-Fi接続失敗
 } lcd_disp_state_t;
 
+void lcd_display_request(lcd_disp_state_t request);
+
 // 関数プロトタイプ宣言
-esp_err_t load_bank_data_from_nvs(void);
-esp_err_t save_bank_data_to_nvs(void);
-esp_err_t reset_bank_data(void);
+// esp_err_t load_bank_data_from_nvs(void);
+// esp_err_t save_bank_data_to_nvs(void);
+// esp_err_t reset_bank_data(void);
 void check_reset_button(void);
 void coin_selector_isr_handler(void* arg);
 int get_coin_index(uint32_t pulse_count);

@@ -23,10 +23,13 @@ void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id
 
 #include "esp_err.h"
 
+//NTP取得URL
 #define NTP_SERVER_NAME "ntp.nict.jp"
-
+//NTP取得接続アクセスポイント設定時のSoftAP
 #define WIFI_SOFTAP_SSID "Cerevo_MakerChipGacha"
 #define WIFI_SOFTAP_PASS "12345678"
+#define WIFI_SOFTAP_CHANNEL 1
+#define WIFI_MAX_STA_CONN 1
 
 
 esp_err_t wifi_config_softap_start(void);

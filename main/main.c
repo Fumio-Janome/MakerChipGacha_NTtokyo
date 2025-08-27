@@ -1,10 +1,15 @@
+#include "esp_netif.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
 #include "driver/ledc.h"
+
 #include "common.h"
 #include "lcd_ips.h"
-
 #include "wifi_config.h"
 
 #include "web_config.h"
+#include <time.h>
+
 
 // オンボードLED PWM制御用チャンネル・タイマー定義
 #define ONBOARD_LED_PWM_TIMER      LEDC_TIMER_0
@@ -100,122 +105,179 @@ uint16_t log_count = 0;
 
 esp_err_t load_log_from_nvs(void) {
     nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    esp_err_t err = nvs_open(BUY_LOG_NAMESPACE, NVS_READONLY, &nvs_handle);
     if (err != ESP_OK) return err;
     size_t size = sizeof(log_entries);
-    err = nvs_get_blob(nvs_handle, "yen500_log", log_entries, &size);
+    err = nvs_get_blob(nvs_handle, BUY_LOGS, log_entries, &size);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
         log_count = 0;
         err = ESP_OK;
     }
-    size_t count_size = sizeof(log_count);
-    nvs_get_u16(nvs_handle, "yen500_cnt", &log_count);
+    nvs_get_u16(nvs_handle, BUY_COUNT, &log_count);
     nvs_close(nvs_handle);
     return err;
 }
 esp_err_t save_log_to_nvs(void) {
     if (xSemaphoreTake(nvs_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) return ESP_ERR_TIMEOUT;
     nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    esp_err_t err = nvs_open(BUY_LOG_NAMESPACE, NVS_READWRITE, &nvs_handle);
     if (err != ESP_OK) { xSemaphoreGive(nvs_mutex); return err; }
-    nvs_set_blob(nvs_handle, "yen500_log", log_entries, log_count * sizeof(log_entry_t));
-    nvs_set_u16(nvs_handle, "yen500_cnt", log_count);
+    nvs_set_blob(nvs_handle, BUY_LOGS, log_entries, log_count * sizeof(log_entry_t));
+    nvs_set_u16(nvs_handle, BUY_COUNT, log_count);
     err = nvs_commit(nvs_handle);
     nvs_close(nvs_handle);
     xSemaphoreGive(nvs_mutex);
     return err;
 }
-void add_500yen_log(time_t now) {
+void add_chip_buy_log(time_t now) {
     if (log_count < MAX_LOG_ENTRIES) {
         log_entries[log_count].timestamp = (uint32_t)now;
         log_count++;
         save_log_to_nvs();
     }
 }
-uint16_t get_500yen_count(void) {
+uint16_t get_chip_buy_count(void) {
     return log_count;
 }
-
-// NVSから合計パルス数とWi-Fi情報(SSID/PASS)を読み込む関数
-esp_err_t load_bank_data_from_nvs(void)
-{
-    nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
-    if (err != ESP_OK) {
-        ESP_LOGI(TAG, "NVSからの読み込みに失敗（初回起動？）: %s", esp_err_to_name(err));
-        return err;
-    }
-    err = nvs_get_u32(nvs_handle, "pulse_cnt", &total_pulse_count);
-    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGE(TAG, "パルス数の読み込みに失敗: %s", esp_err_to_name(err));
-    }
-    size_t len;
-    len = sizeof(bank_data.ssid);
-    err = nvs_get_str(nvs_handle, "wifi_ssid", bank_data.ssid, &len);
-    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) bank_data.ssid[0] = '\0';
-    len = sizeof(bank_data.password);
-    err = nvs_get_str(nvs_handle, "wifi_pass", bank_data.password, &len);
-    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) bank_data.password[0] = '\0';
-    nvs_close(nvs_handle);
-    total_value = total_pulse_count * 100;
-    ESP_LOGI(TAG, "NVSから合計パルス数を読み込みました: %luパルス（%lu円）", total_pulse_count, total_value);
-    ESP_LOGI(TAG, "NVSからWi-Fi情報を読み込みました: SSID=%s PASS=%s", bank_data.ssid, bank_data.password);
-    return ESP_OK;
+void set_chip_buy_count(uint16_t count) {
+    log_count = count;
 }
 
-// NVSに合計パルス数とWi-Fi情報(SSID/PASS)を保存する関数
-esp_err_t save_bank_data_to_nvs(void)
-{
-    if (xSemaphoreTake(nvs_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
-        ESP_LOGW(TAG, "NVS保存処理がタイムアウトしました");
-        return ESP_ERR_TIMEOUT;
-    }
+esp_err_t reset_buy_count(void) {
     nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "NVSのオープンに失敗: %s", esp_err_to_name(err));
-        xSemaphoreGive(nvs_mutex);
-        return err;
-    }
-    err = nvs_set_u32(nvs_handle, "pulse_cnt", total_pulse_count);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "パルス数の保存に失敗: %s", esp_err_to_name(err));
-        nvs_close(nvs_handle);
-        xSemaphoreGive(nvs_mutex);
-        return err;
-    }
-    err = nvs_set_str(nvs_handle, "wifi_ssid", bank_data.ssid);
-    if (err != ESP_OK) ESP_LOGE(TAG, "SSIDの保存に失敗: %s", esp_err_to_name(err));
-    err = nvs_set_str(nvs_handle, "wifi_pass", bank_data.password);
-    if (err != ESP_OK) ESP_LOGE(TAG, "PASSの保存に失敗: %s", esp_err_to_name(err));
-    err = nvs_commit(nvs_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "NVSコミットに失敗: %s", esp_err_to_name(err));
-    } else {
-        ESP_LOGI(TAG, "合計パルス数とWi-Fi情報をNVSに保存しました: %luパルス, SSID=%s PASS=%s", total_pulse_count, bank_data.ssid, bank_data.password);
+    esp_err_t err = nvs_open(BUY_LOG_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK) return err;
+    err = nvs_set_u16(nvs_handle, BUY_COUNT, 0); // BUY_COUNTを0に
+    if (err == ESP_OK){
+        set_chip_buy_count(0); // メモリ上のカウントも0に
+        err = nvs_commit(nvs_handle);
     }
     nvs_close(nvs_handle);
-    xSemaphoreGive(nvs_mutex);
+    lcd_display_request(LCD_STATE_DATE_TIME);
     return err;
 }
 
-// 合計パルス数をリセットする関数
-esp_err_t reset_bank_data(void)
-{
-    total_pulse_count = 0;
-    total_value = 0;
-    nvs_handle_t nvs_handle;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
-    if (err == ESP_OK) {
-        nvs_erase_all(nvs_handle);
-        nvs_commit(nvs_handle);
-        nvs_close(nvs_handle);
-        ESP_LOGI(TAG, "合計パルス数をリセットしました");
-    } else {
-        ESP_LOGE(TAG, "NVSリセットに失敗: %s", esp_err_to_name(err));
+// 最新の500円ログを取得する
+// out_entries: 取得先配列, max_entries: 最大取得数
+// 戻り値: 実際に取得した件数
+uint16_t get_chip_buy_logs(log_entry_t *out_entries, uint16_t max_entries) {
+    uint16_t count = (log_count < max_entries) ? log_count : max_entries;
+    for (uint16_t i = 0; i < count; i++) {
+        out_entries[i] = log_entries[i];
     }
-    return err;
+    return count;
 }
+
+void log_list_serial_output(void) {
+    uint16_t chips = 0;
+    if (load_log_from_nvs() == ESP_OK) {
+        log_entry_t *tmp_entries = malloc(sizeof(log_entry_t) * MAX_LOG_ENTRIES);
+        if (tmp_entries) {
+            chips = get_chip_buy_logs(tmp_entries, MAX_LOG_ENTRIES);
+            printf("--- Maker Chip購入履歴（購入数:%u）---\n", chips);
+            for (uint16_t i = 0; i < chips; i++) {
+                time_t t = (time_t)tmp_entries[i].timestamp;
+                struct tm tm_info;
+                localtime_r(&t, &tm_info);
+                char buf[32];
+                strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_info);
+                printf("%2u: %s\n", i+1, buf);
+            }
+            printf("--------------------------------------\n");
+            free(tmp_entries);
+        } else {
+            printf("購買ログ一時バッファの確保に失敗\n");
+        }
+    } else {
+            printf("--- Maker Chip購入履歴（購入数:%u）---\n", chips);
+            printf("--------------------------------------\n");
+    }
+    printf("・BOOTボタン短押しでログ出力\n");
+    printf("・BOOTボタン5秒長押しでログクリア\n");
+    printf("・BOOTボタン10秒長押しでNVS初期化\n");
+}
+
+
+// // NVSから合計パルス数とWi-Fi情報(SSID/PASS)を読み込む関数
+// esp_err_t load_bank_data_from_nvs(void)
+// {
+//     nvs_handle_t nvs_handle;
+//     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+//     if (err != ESP_OK) {
+//         ESP_LOGI(TAG, "NVSからの読み込みに失敗（初回起動？）: %s", esp_err_to_name(err));
+//         return err;
+//     }
+//     err = nvs_get_u32(nvs_handle, "pulse_cnt", &total_pulse_count);
+//     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+//         ESP_LOGE(TAG, "パルス数の読み込みに失敗: %s", esp_err_to_name(err));
+//     }
+//     size_t len;
+//     len = sizeof(bank_data.ssid);
+//     err = nvs_get_str(nvs_handle, "wifi_ssid", bank_data.ssid, &len);
+//     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) bank_data.ssid[0] = '\0';
+//     len = sizeof(bank_data.password);
+//     err = nvs_get_str(nvs_handle, "wifi_pass", bank_data.password, &len);
+//     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) bank_data.password[0] = '\0';
+//     nvs_close(nvs_handle);
+//     total_value = total_pulse_count * 100;
+//     ESP_LOGI(TAG, "NVSから合計パルス数を読み込みました: %luパルス（%lu円）", total_pulse_count, total_value);
+//     ESP_LOGI(TAG, "NVSからWi-Fi情報を読み込みました: SSID=%s PASS=%s", bank_data.ssid, bank_data.password);
+//     return ESP_OK;
+// }
+
+// // NVSに合計パルス数とWi-Fi情報(SSID/PASS)を保存する関数
+// esp_err_t save_bank_data_to_nvs(void)
+// {
+//     if (xSemaphoreTake(nvs_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+//         ESP_LOGW(TAG, "NVS保存処理がタイムアウトしました");
+//         return ESP_ERR_TIMEOUT;
+//     }
+//     nvs_handle_t nvs_handle;
+//     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+//     if (err != ESP_OK) {
+//         ESP_LOGE(TAG, "NVSのオープンに失敗: %s", esp_err_to_name(err));
+//         xSemaphoreGive(nvs_mutex);
+//         return err;
+//     }
+//     err = nvs_set_u32(nvs_handle, "pulse_cnt", total_pulse_count);
+//     if (err != ESP_OK) {
+//         ESP_LOGE(TAG, "パルス数の保存に失敗: %s", esp_err_to_name(err));
+//         nvs_close(nvs_handle);
+//         xSemaphoreGive(nvs_mutex);
+//         return err;
+//     }
+//     err = nvs_set_str(nvs_handle, "wifi_ssid", bank_data.ssid);
+//     if (err != ESP_OK) ESP_LOGE(TAG, "SSIDの保存に失敗: %s", esp_err_to_name(err));
+//     err = nvs_set_str(nvs_handle, "wifi_pass", bank_data.password);
+//     if (err != ESP_OK) ESP_LOGE(TAG, "PASSの保存に失敗: %s", esp_err_to_name(err));
+//     err = nvs_commit(nvs_handle);
+//     if (err != ESP_OK) {
+//         ESP_LOGE(TAG, "NVSコミットに失敗: %s", esp_err_to_name(err));
+//     } else {
+//         ESP_LOGI(TAG, "合計パルス数とWi-Fi情報をNVSに保存しました: %luパルス, SSID=%s PASS=%s", total_pulse_count, bank_data.ssid, bank_data.password);
+//     }
+//     nvs_close(nvs_handle);
+//     xSemaphoreGive(nvs_mutex);
+//     return err;
+// }
+
+// // 合計パルス数をリセットする関数
+// esp_err_t reset_bank_data(void)
+// {
+//     total_pulse_count = 0;
+//     total_value = 0;
+//     nvs_handle_t nvs_handle;
+//     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+//     if (err == ESP_OK) {
+//         nvs_erase_all(nvs_handle);
+//         nvs_commit(nvs_handle);
+//         nvs_close(nvs_handle);
+//         ESP_LOGI(TAG, "合計パルス数をリセットしました");
+//     } else {
+//         ESP_LOGE(TAG, "NVSリセットに失敗: %s", esp_err_to_name(err));
+//     }
+//     return err;
+// }
 
 // リセットボタンチェック機能
 void check_reset_button(void)
@@ -236,13 +298,26 @@ void check_reset_button(void)
         // ボタンが押され始めた
         button_pressed = true;
         button_press_start = xTaskGetTickCount();
-        ESP_LOGI(TAG, "リセットボタンが押されました（3秒間長押しでリセット）");
+        // ESP_LOGI(TAG, "BOOTボタン Pushed");
+
     } else if (button_state == 1 && button_pressed) {
         // ボタンが離された
         TickType_t press_duration = xTaskGetTickCount() - button_press_start;
         button_pressed = false;
-        ESP_LOGI(TAG, "リセットボタンが離されました（押下時間: %lu ms）", 
-                 (unsigned long)(press_duration * portTICK_PERIOD_MS));
+        int press_duration_ms = (int)(press_duration * portTICK_PERIOD_MS);
+        // ESP_LOGI(TAG, "BOOTボタン Released（押下時間: %lu ms）", (unsigned long)press_duration_ms);
+
+        if(press_duration_ms > LOG_CLEAR_TIME_MS){
+            ESP_LOGI(TAG, "購入履歴をクリアします");
+            if(reset_buy_count() == ESP_OK){
+                ESP_LOGI(TAG, "購入履歴をクリアしました");
+            }else{
+                ESP_LOGI(TAG, "購入履歴のクリアに失敗しました");
+            }
+
+        }else if(press_duration_ms > LOG_LIST_TIME_MS){
+            log_list_serial_output();
+        }
     } else if (button_state == 0 && button_pressed) {
         // ボタンが押し続けられている
         TickType_t press_duration = xTaskGetTickCount() - button_press_start;
@@ -250,21 +325,21 @@ void check_reset_button(void)
         // 1秒ごとに進捗を表示
         static TickType_t last_progress_time = 0;
         if ((press_duration - last_progress_time) > pdMS_TO_TICKS(1000)) {
-            ESP_LOGI(TAG, "リセットボタン長押し中... %lu / %lu ms", 
-                     (unsigned long)(press_duration * portTICK_PERIOD_MS), 
-                     (unsigned long)RESET_HOLD_TIME_MS);
+            // ESP_LOGI(TAG, "リセットボタン長押し中... %lu / %lu ms", 
+            //          (unsigned long)(press_duration * portTICK_PERIOD_MS), 
+            //          (unsigned long)RESET_HOLD_TIME_MS);
             last_progress_time = press_duration;
         }
         
-        if (press_duration > pdMS_TO_TICKS(RESET_HOLD_TIME_MS)) {
+        if (press_duration > pdMS_TO_TICKS(NVS_FORMAT_TIME_MS)) {
             // 長押し時間に達した
-            ESP_LOGI(TAG, "リセット実行中...");
+            ESP_LOGI(TAG, "NVS初期化...再起動");
+           
+            nvs_flash_erase();
+            esp_restart(); 
             
-            reset_bank_data();
-            // display_bank_status();
-            
-            button_pressed = false; // リセット後はボタン状態もリセット
-            ESP_LOGI(TAG, "リセット完了しました");
+            // button_pressed = false; // リセット後はボタン状態もリセット
+            // ESP_LOGI(TAG, "リセット完了しました");
         }
     }
 }
@@ -549,23 +624,25 @@ void coin_selector_task(void *pvParameters)
                             }
                             ext_led_off();
 
+                            // ロギング（日時記録＆カウント更新）
+                            add_chip_buy_log(time(NULL));
+
                             // サーボモータの代用: オンボードLEDを4秒間PWMでフェードアップ・ダウン
                             onboard_led_pwm_fade_test(); // フェードテスト
                             vTaskDelay(pdMS_TO_TICKS(1000));
 
                             lcd_display_request(LCD_STATE_THANKS);
+                            lcd_display_request(LCD_STATE_DATE_TIME);
 
                             vTaskDelay(pdMS_TO_TICKS(4000));
                             memset(&bank_data, 0, sizeof(bank_data));
-                            save_bank_data_to_nvs();
-                            // 500円硬貨投入ログの追加
-                            // add_500yen_log(now);
+                            // save_bank_data_to_nvs();
 
                             lcd_display_request(LCD_STATE_INSERT);
                         } else {
                             lcd_display_request(LCD_STATE_AMOUNT);
                             ext_led_off();
-                            save_bank_data_to_nvs();
+                            // save_bank_data_to_nvs();
                         }
                     } else {
                         ESP_LOGW(TAG, "不明なコイン: %luパルス", pulse_count);
@@ -661,13 +738,12 @@ esp_err_t init_gpio(void)
 }
 
 // メイン関数
-// 必要なESP-IDFヘッダを追加
-#include "esp_netif.h"
-#include "esp_wifi.h"
-#include "esp_event.h"
 
 void app_main(void)
 {
+    // 日本時間（JST）にタイムゾーン設定
+    setenv("TZ", "JST-9", 1);
+    tzset();
     ESP_LOGI(TAG, "--Maker Chip Gacha-- 開始");
     
     // NVS初期化
@@ -677,6 +753,7 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    load_log_from_nvs();
     ESP_LOGI(TAG, "NVSが初期化されました");
 
     // ネットワーク初期化は一度だけ
@@ -691,8 +768,11 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
 
-    // 保存された合計パルス数を読み込み
-    load_bank_data_from_nvs();
+    // // 保存された合計パルス数を読み込み
+    // load_bank_data_from_nvs();
+
+    // // 購買ログ
+    // log_list_serial_output();
 
     // Wi-Fi/NTP関連は別タスクで実行
     start_wifi_setup_task();

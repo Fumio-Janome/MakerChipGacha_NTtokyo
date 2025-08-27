@@ -1,5 +1,4 @@
 
-#include "wifi_config.h"
 #include <string.h>
 #include <stdlib.h>
 #include "esp_log.h"
@@ -8,7 +7,10 @@
 #include "nvs_flash.h"
 #include "esp_system.h" // esp_restart用
 
-static const char *TAG = "web_config";
+#include "common.h"
+#include "wifi_config.h"
+
+// static const char *TAG = "web_config";
 
 // URLデコード
 static void url_decode(char *dst, const char *src, size_t dst_len) {
@@ -93,8 +95,8 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
     // 既存SSIDを取得（NVSから）
     nvs_handle_t nvs;
     size_t len = sizeof(ssid);
-    if (nvs_open("wifi_cfg", NVS_READONLY, &nvs) == ESP_OK) {
-        nvs_get_str(nvs, "ssid", ssid, &len);
+    if (nvs_open(WIFI_CONFIG_NAMESPACE, NVS_READONLY, &nvs) == ESP_OK) {
+        nvs_get_str(nvs, WIFI_CONFIG_SSID_KEY, ssid, &len);
         nvs_close(nvs);
     }
     char ssid_esc[64];
