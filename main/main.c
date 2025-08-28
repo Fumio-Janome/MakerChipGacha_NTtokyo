@@ -316,6 +316,7 @@ void check_reset_button(void)
             }
 
         }else if(press_duration_ms > LOG_LIST_TIME_MS){
+            // ログリストをシリアル出力
             log_list_serial_output();
         }
     } else if (button_state == 0 && button_pressed) {
@@ -865,11 +866,19 @@ void app_main(void)
     // onboard_led_pwm_fade_test(); // フェードテスト
 
     // メインループ
+    int loop_count = 0;
     while (1) {
         // リセットボタンのチェック
         check_reset_button();
 
         vTaskDelay(pdMS_TO_TICKS(100));  // 10ms間隔での処理
+
+        //for Debug--------------------------
+        loop_count++;
+        if (loop_count > 10) {
+            loop_count = 0;
+            // add_chip_buy_log(time(NULL));
+        }
     }
     // アプリ終了時にフェード機能アンインストール（必要なら）
     // ledc_fade_func_uninstall();
