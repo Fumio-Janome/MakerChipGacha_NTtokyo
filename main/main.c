@@ -12,27 +12,27 @@
 
 
 // オンボードLED PWM制御用チャンネル・タイマー定義
-#define ONBOARD_LED_PWM_TIMER      LEDC_TIMER_0
-#define ONBOARD_LED_PWM_MODE       LEDC_LOW_SPEED_MODE
-#define ONBOARD_LED_PWM_CHANNEL    LEDC_CHANNEL_0
-#define ONBOARD_LED_PWM_RES        LEDC_TIMER_10_BIT
+#define SERVO_MOTOR_PWM_TIMER      LEDC_TIMER_0
+#define SERVO_MOTOR_PWM_MODE       LEDC_LOW_SPEED_MODE
+#define SERVO_MOTOR_PWM_CHANNEL    LEDC_CHANNEL_0
+#define SERVO_MOTOR_PWM_RES        LEDC_TIMER_10_BIT
 
 // オンボードLEDをPWMで点灯（duty_percent: 0-100, freq_hz: 周波数）
 void onboard_led_pwm_start(int duty_percent, int freq_hz) {
     ledc_timer_config_t timer_conf = {
-        .speed_mode = ONBOARD_LED_PWM_MODE,
-        .timer_num = ONBOARD_LED_PWM_TIMER,
-        .duty_resolution = ONBOARD_LED_PWM_RES,
+        .speed_mode = SERVO_MOTOR_PWM_MODE,
+        .timer_num = SERVO_MOTOR_PWM_TIMER,
+        .duty_resolution = SERVO_MOTOR_PWM_RES,
         .freq_hz = freq_hz,
         .clk_cfg = LEDC_AUTO_CLK
     };
     ledc_timer_config(&timer_conf);
 
     ledc_channel_config_t channel_conf = {
-        .gpio_num = ONBOARD_LED_PIN,
-        .speed_mode = ONBOARD_LED_PWM_MODE,
-        .channel = ONBOARD_LED_PWM_CHANNEL,
-        .timer_sel = ONBOARD_LED_PWM_TIMER,
+        .gpio_num = SERVO_MOTOR_PIN,
+        .speed_mode = SERVO_MOTOR_PWM_MODE,
+        .channel = SERVO_MOTOR_PWM_CHANNEL,
+        .timer_sel = SERVO_MOTOR_PWM_TIMER,
         .duty = (duty_percent * ((1 << 10) - 1)) / 100,
         .hpoint = 0,
         .flags.output_invert = 0 // 極性通常（duty=maxで最大輝度、duty=0で消灯）
@@ -44,7 +44,7 @@ void onboard_led_pwm_start(int duty_percent, int freq_hz) {
 
 // オンボードLED PWM停止
 void onboard_led_pwm_stop(void) {
-    ledc_stop(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, 1);    //0); // 0=出力Low（output_invert=1時は消灯）
+    ledc_stop(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, 1);    //0); // 0=出力Low（output_invert=1時は消灯）
     // ledc_fade_func_uninstall(); // 終了時のみ呼び出す
 }
 
@@ -56,11 +56,11 @@ static void onboard_led_pwm_fade_task(void *pvParameters) {
     onboard_led_pwm_start(100, 1000); // duty_percent=100で消灯（output_invert=1のため）
     vTaskDelay(pdMS_TO_TICKS(100)); // 安定化のため少し待つ
     // 2秒で全点灯（duty=max→0）
-    ledc_set_fade_with_time(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, 0, fade_time_ms);
-    ledc_fade_start(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, LEDC_FADE_WAIT_DONE);
+    ledc_set_fade_with_time(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, 0, fade_time_ms);
+    ledc_fade_start(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, LEDC_FADE_WAIT_DONE);
     // 2秒で消灯（duty=0→max）
-    ledc_set_fade_with_time(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, max_duty, fade_time_ms);
-    ledc_fade_start(ONBOARD_LED_PWM_MODE, ONBOARD_LED_PWM_CHANNEL, LEDC_FADE_WAIT_DONE);
+    ledc_set_fade_with_time(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, max_duty, fade_time_ms);
+    ledc_fade_start(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, LEDC_FADE_WAIT_DONE);
     // 後始末（消灯）
     onboard_led_pwm_stop();
     vTaskDelete(NULL);
@@ -286,7 +286,7 @@ void check_reset_button(void)
     static bool button_pressed = false;
     static int last_button_state = -1;  // 初回の状態変化を検出するため
     
-    int button_state = gpio_get_level(RESET_BUTTON_PIN);
+    int button_state = gpio_get_level(LOG_BUTTON_PIN);
     
     // デバッグ：ボタン状態の変化をログ出力
     if (button_state != last_button_state) {
@@ -628,9 +628,9 @@ void coin_selector_task(void *pvParameters)
                             // ロギング（日時記録＆カウント更新）
                             add_chip_buy_log(time(NULL));
 
-                            // サーボモータの代用: オンボードLEDを4秒間PWMでフェードアップ・ダウン
-                            onboard_led_pwm_fade_test(); // フェードテスト
-                            vTaskDelay(pdMS_TO_TICKS(1000));
+                            // // サーボモータの代用: オンボードLEDを4秒間PWMでフェードアップ・ダウン
+                            // onboard_led_pwm_fade_test(); // フェードテスト
+                            // vTaskDelay(pdMS_TO_TICKS(1000));
 
                             lcd_display_request(LCD_STATE_THANKS);
                             lcd_display_request(LCD_STATE_DATE_TIME);
@@ -687,7 +687,7 @@ esp_err_t init_gpio(void)
     
     // リセットボタンピンの設定（プルアップ付き入力）
     gpio_config_t reset_conf = {
-        .pin_bit_mask = (1ULL << RESET_BUTTON_PIN),
+        .pin_bit_mask = (1ULL << LOG_BUTTON_PIN),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -850,7 +850,7 @@ void app_main(void)
     lcd_display_request(LCD_STATE_STARTING);    //起動中画面表示
 
     // ボタンの初期状態を確認
-    int initial_button_state = gpio_get_level(RESET_BUTTON_PIN);
+    int initial_button_state = gpio_get_level(LOG_BUTTON_PIN);
     ESP_LOGI(TAG, "リセットボタン初期状態: %d （0=押下、1=未押下）", initial_button_state);
     
     // // 現在の入金状態をシリアルに表示（復元されたデータ）
@@ -864,6 +864,9 @@ void app_main(void)
     // ESP_LOGI(TAG, "*** メインループ開始 - 時刻:%lu ***", xTaskGetTickCount());
     
     // onboard_led_pwm_fade_test(); // フェードテスト
+
+    // PWM初期化
+    ledc_setup();
 
     // メインループ
     int loop_count = 0;

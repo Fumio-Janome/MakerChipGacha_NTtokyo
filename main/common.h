@@ -45,8 +45,8 @@ static const char *TAG = "MC_GACHA";
 
 #if 1
 // GPIO定義（ESP32-C3 Mini）
-#define RESET_BUTTON_PIN  GPIO_NUM_9    // GPIO_NUM_0    // リセットボタンピン（Mini用 BOOTボタン）
-#define ONBOARD_LED_PIN   GPIO_NUM_0    // GPIO_NUM_9    // 外部LED用ピン(PWM制御)→モータ制御
+#define LOG_BUTTON_PIN  GPIO_NUM_9    // GPIO_NUM_0    // リセットボタンピン（Mini用 BOOTボタン）
+#define SERVO_MOTOR_PIN   GPIO_NUM_0    // GPIO_NUM_9    // 外部LED用ピン(PWM制御)→モータ制御
 
 #define COIN_SELECTOR_PIN GPIO_NUM_3    // コインセレクタのパルス入力ピン（Mini用）
 #define EXT_LED_PIN       GPIO_NUM_1    // 外部LED用ピン（Mini用）
@@ -61,8 +61,8 @@ static const char *TAG = "MC_GACHA";
 #define LCD_BLK_PIN       GPIO_NUM_7    // バックライト制御ピン
 #else
 // GPIO定義（ESP32-C3 Super Mini）
-#define RESET_BUTTON_PIN  GPIO_NUM_9    // リセットボタンピン（ESP32-C3 Super Mini BOOTボタン）
-#define ONBOARD_LED_PIN   GPIO_NUM_8    // オンボードLED用ピン（GPIO08直結）
+#define LOG_BUTTON_PIN  GPIO_NUM_9    // リセットボタンピン（ESP32-C3 Super Mini BOOTボタン）
+#define SERVO_MOTOR_PIN   GPIO_NUM_8    // オンボードLED用ピン（GPIO08直結）
 
 #define COIN_SELECTOR_PIN GPIO_NUM_4    // コインセレクタのパルス入力ピン
 #define EXT_LED_PIN       GPIO_NUM_0   // 外部LED用ピン
@@ -163,6 +163,8 @@ void coin_selector_task(void *pvParameters);
 esp_err_t init_gpio(void);
 bool validate_pulse_sequence(uint32_t pulse_count);  // パルス品質検証関数
 
+void ledc_setup();
+
 // LCD関連関数
 #define LCD_IF_SPI
 // #define LCD_IF_I2C
@@ -191,8 +193,8 @@ static inline void ext_led_on(void)  { gpio_set_level(EXT_LED_PIN, 0); }
 static inline void ext_led_off(void) { gpio_set_level(EXT_LED_PIN, 1); }
 
 // オンボードLED制御関数（アクティブロー: 点灯0, 消灯1）
-static inline void onboard_led_on(void)  { gpio_set_level(ONBOARD_LED_PIN, 0); }
-static inline void onboard_led_off(void) { gpio_set_level(ONBOARD_LED_PIN, 1); }
+static inline void onboard_led_on(void)  { gpio_set_level(SERVO_MOTOR_PIN, 0); }
+static inline void onboard_led_off(void) { gpio_set_level(SERVO_MOTOR_PIN, 1); }
 
 // 外部ボタン状態取得
 static inline int ext_button_pressed(void) { return gpio_get_level(EXT_BUTTON_PIN) != 0; }
