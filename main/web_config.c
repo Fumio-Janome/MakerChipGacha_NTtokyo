@@ -85,7 +85,7 @@ static esp_err_t wifi_post_handler(httpd_req_t *req) {
 }
 
 static esp_err_t wifi_get_handler(httpd_req_t *req) {
-    char *html = malloc(2048);
+    char *html = malloc(12288);
     if (!html) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
         return ESP_FAIL;
@@ -101,7 +101,7 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
     }
     char ssid_esc[64];
     html_escape(ssid_esc, ssid, sizeof(ssid_esc));
-    snprintf(html, 2048,
+    snprintf(html, 12288,
         "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>WiFi Config</title>"
         "<style>"
         "body{font-family:Arial;margin:20px;background:#f5f5f5}"
@@ -116,7 +116,17 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
         ".log-btn{margin:10px 0 10px 0;width:100%%;font-size:16px;padding:10px;}"
         "textarea{width:100%%;height:200px;resize:vertical;overflow:auto;font-size:14px;box-sizing:border-box;margin-bottom:10px;}"
         "</style>"
-        "<script>function scrollToLog(){document.getElementById('logbox').scrollIntoView({behavior:'smooth'});}</script>"
+        "<script>\n"
+        "function fetchLogs(){\n"
+        "  var btn=document.getElementById('logbtn');\n"
+        "  btn.disabled=true;btn.innerText='取得中...';\n"
+        "  fetch('/logs').then(r=>r.text()).then(t=>{\n"
+        "    document.getElementById('logbox').value=t;\n"
+        "    btn.disabled=false;btn.innerText='参照';\n"
+        "    document.getElementById('logbox').scrollIntoView({behavior:'smooth'});\n"
+        "  }).catch(()=>{btn.disabled=false;btn.innerText='参照';});\n"
+        "}\n"
+        "</script>"
         "</head><body>"
         "<div class=c>"
         "<h1>Cerevo Maker Chip Gacha<br>Wi-Fi設定</h1>"
@@ -135,7 +145,7 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
         "<p style='color:gray;font-size:small;'>※SSIDは必須、パスワードは必要に応じて入力してください。</p>"
         "<hr>"
         "<h2>購入ログの参照</h2>"
-        "<button type='button' class='log-btn' onclick='scrollToLog()'>参照</button>"
+        "<button type='button' class='log-btn' id='logbtn' onclick='fetchLogs()'>参照</button>"
         "<textarea id='logbox' readonly placeholder='ここに購入ログが表示されます'></textarea>"
         "</div>"
         "</body></html>",
@@ -143,6 +153,21 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html; charset=UTF-8");
     httpd_resp_sendstr(req, html);
     free(html);
+    return ESP_OK;
+}
+
+// ログ取得用ハンドラ（GET /logs）
+static esp_err_t logs_get_handler(httpd_req_t *req) {
+    char *logbuf = malloc(8192);
+    if (!logbuf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+        return ESP_FAIL;
+    }
+    extern uint16_t log_list_web_output(char *buf, size_t bufsize);
+    log_list_web_output(logbuf, 8192);
+    httpd_resp_set_type(req, "text/plain; charset=UTF-8");
+    httpd_resp_sendstr(req, logbuf);
+    free(logbuf);
     return ESP_OK;
 }
 
@@ -180,6 +205,13 @@ void start_wifi_config_server(void) {
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server, &done_uri);
+        httpd_uri_t logs_uri = {
+            .uri = "/logs",
+            .method = HTTP_GET,
+            .handler = logs_get_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &logs_uri);
         ESP_LOGI(TAG, "Wi-Fi設定Webサーバ起動: PCやスマホで http://192.168.4.1/ にアクセスしてください");
     }
 }

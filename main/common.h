@@ -117,6 +117,7 @@ esp_err_t load_log_from_nvs(void);
 esp_err_t save_log_to_nvs(void);
 void add_chip_buy_log(time_t now);
 uint16_t get_chip_buy_count(void);
+uint16_t log_list_web_output(char *buf, size_t bufsize);
 
 // キューとセマフォのハンドル
 extern QueueHandle_t coin_event_queue;

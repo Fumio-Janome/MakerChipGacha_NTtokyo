@@ -119,7 +119,7 @@ void log_list_serial_output(void) {
                 struct tm tm_info;
                 localtime_r(&t, &tm_info);
                 char buf[32];
-                strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_info);
+                strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &tm_info);
                 printf("%2u: %s\n", i+1, buf);
             }
             printf("--------------------------------------\n");
@@ -134,6 +134,47 @@ void log_list_serial_output(void) {
     printf("・BOOTボタン短押しでログ出力\n");
     printf("・BOOTボタン5秒長押しでログクリア\n");
     printf("・BOOTボタン10秒長押しでNVS初期化\n");
+}
+
+// Web用 購入ログ出力関数
+// buf: 出力先バッファ, bufsize: バッファサイズ
+// 戻り値: 出力した件数
+uint16_t log_list_web_output(char *buf, size_t bufsize) {
+    if (!buf || bufsize == 0) return 0;
+    uint16_t chips = 0;
+    size_t pos = 0;
+    if (load_log_from_nvs() == ESP_OK) {
+        log_entry_t *tmp_entries = malloc(sizeof(log_entry_t) * MAX_LOG_ENTRIES);
+        if (tmp_entries) {
+            chips = get_chip_buy_logs(tmp_entries, MAX_LOG_ENTRIES);
+            int n = snprintf(buf+pos, bufsize-pos, "--- Maker Chip購入履歴（購入数:%u）---\r\n", chips);
+            if (n > 0) pos += n;
+            for (uint16_t i = 0; i < chips; i++) {
+                time_t t = (time_t)tmp_entries[i].timestamp;
+                struct tm tm_info;
+                localtime_r(&t, &tm_info);
+                char datebuf[32];
+                strftime(datebuf, sizeof(datebuf), "%Y/%m/%d %H:%M:%S", &tm_info);
+                n = snprintf(buf+pos, bufsize-pos, "%2u: %s\r\n", i+1, datebuf);
+                if (n > 0) pos += n;
+                if (pos >= bufsize-64) break;
+            }
+            n = snprintf(buf+pos, bufsize-pos, "--------------------------------------\r\n");
+            if (n > 0) pos += n;
+            free(tmp_entries);
+        } else {
+            snprintf(buf, bufsize, "ログ一時バッファ確保失敗\r\n");
+        }
+    } else {
+        snprintf(buf, bufsize, "ログ取得失敗\r\n");
+    }
+    // // 操作説明を追加
+    // size_t remain = bufsize - pos;
+    // if (remain > 128) {
+    //     snprintf(buf+pos, remain,
+    //         "・BOOTボタン短押しでログ出力\r\n・BOOTボタン5秒長押しでログクリア\r\n・BOOTボタン10秒長押しでNVS初期化\r\n");
+    // }
+    return chips;
 }
 
 // リセットボタンチェック機能
