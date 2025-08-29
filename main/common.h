@@ -1,11 +1,7 @@
-// サーボモータ(PWM)テスト用: オンボードLEDをPWM制御する関数プロトタイプ
-void onboard_led_pwm_start(int duty_percent, int freq_hz);
-void onboard_led_pwm_stop(void);
 #ifndef COMMON_H_
 #define COMMON_H_
+
 #include <stdio.h>
-// オンボードLEDを1秒で最大輝度まで上げ、1秒で消灯まで下げる（非ブロッキング）
-void onboard_led_pwm_fade_test(void);
 #include <stdbool.h>
 #include <unistd.h>
 #include <limits.h>
@@ -26,12 +22,6 @@ static const char *TAG = "MC_GACHA";
 // static const char *TAG_LCD_IPS = "LCD_IPS";
 // static const char *TAG_LCD_I2C = "LCD_I2C";
 
-// NVS設定(15文字以内で定義)
-// #define NVS_NAMESPACE "makerchip_gacha"
-// #define NVS_KEY_TOTAL_COINS "total_coins"
-// #define NVS_KEY_TOTAL_VALUE "total_value"
-// #define NVS_KEY_COIN_COUNT "coin_count"
-
 //NTP取得接続アクセスポイント設定NVS保存キー
 #define WIFI_CONFIG_NAMESPACE "wifi_cfg"
 #define WIFI_CONFIG_SSID_KEY "wifi_ssid"
@@ -45,7 +35,7 @@ static const char *TAG = "MC_GACHA";
 
 #if 1
 // GPIO定義（ESP32-C3 Mini）
-#define LOG_BUTTON_PIN  GPIO_NUM_9    // GPIO_NUM_0    // リセットボタンピン（Mini用 BOOTボタン）
+#define LOG_BUTTON_PIN    GPIO_NUM_9    // GPIO_NUM_0    // リセットボタンピン（Mini用 BOOTボタン）
 #define SERVO_MOTOR_PIN   GPIO_NUM_0    // GPIO_NUM_9    // 外部LED用ピン(PWM制御)→モータ制御
 
 #define COIN_SELECTOR_PIN GPIO_NUM_3    // コインセレクタのパルス入力ピン（Mini用）
@@ -164,6 +154,8 @@ esp_err_t init_gpio(void);
 bool validate_pulse_sequence(uint32_t pulse_count);  // パルス品質検証関数
 
 void ledc_setup();
+void servo_0to180(void);
+void servo_180to0(void);
 
 // LCD関連関数
 #define LCD_IF_SPI
@@ -192,9 +184,9 @@ void lcd_display_bank_status(void);
 static inline void ext_led_on(void)  { gpio_set_level(EXT_LED_PIN, 0); }
 static inline void ext_led_off(void) { gpio_set_level(EXT_LED_PIN, 1); }
 
-// オンボードLED制御関数（アクティブロー: 点灯0, 消灯1）
-static inline void onboard_led_on(void)  { gpio_set_level(SERVO_MOTOR_PIN, 0); }
-static inline void onboard_led_off(void) { gpio_set_level(SERVO_MOTOR_PIN, 1); }
+// // オンボードLED制御関数（アクティブロー: 点灯0, 消灯1）
+// static inline void onboard_led_on(void)  { gpio_set_level(SERVO_MOTOR_PIN, 0); }
+// static inline void onboard_led_off(void) { gpio_set_level(SERVO_MOTOR_PIN, 1); }
 
 // 外部ボタン状態取得
 static inline int ext_button_pressed(void) { return gpio_get_level(EXT_BUTTON_PIN) != 0; }

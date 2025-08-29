@@ -15,5 +15,8 @@
     "--background-index",
     "--query-driver=C:\\Espressif\\tools\\riscv32-esp-elf\\esp-14.2.0_20241119\\riscv32-esp-elf\\bin\\riscv32-esp-elf-gcc.exe",
     "--compile-commands-dir=c:\\_Cerevo\\development\\ESP32\\workspace\\MakerChipGacha\\Gacha_100-500_LCD(IPS---)\\build"
-  ]
+  ],
+  "files.associations": {
+    "common.h": "c"
+  }
 }

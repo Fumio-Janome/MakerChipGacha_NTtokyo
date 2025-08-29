@@ -10,67 +10,6 @@
 #include "web_config.h"
 #include <time.h>
 
-
-// オンボードLED PWM制御用チャンネル・タイマー定義
-#define SERVO_MOTOR_PWM_TIMER      LEDC_TIMER_0
-#define SERVO_MOTOR_PWM_MODE       LEDC_LOW_SPEED_MODE
-#define SERVO_MOTOR_PWM_CHANNEL    LEDC_CHANNEL_0
-#define SERVO_MOTOR_PWM_RES        LEDC_TIMER_10_BIT
-
-// オンボードLEDをPWMで点灯（duty_percent: 0-100, freq_hz: 周波数）
-void onboard_led_pwm_start(int duty_percent, int freq_hz) {
-    ledc_timer_config_t timer_conf = {
-        .speed_mode = SERVO_MOTOR_PWM_MODE,
-        .timer_num = SERVO_MOTOR_PWM_TIMER,
-        .duty_resolution = SERVO_MOTOR_PWM_RES,
-        .freq_hz = freq_hz,
-        .clk_cfg = LEDC_AUTO_CLK
-    };
-    ledc_timer_config(&timer_conf);
-
-    ledc_channel_config_t channel_conf = {
-        .gpio_num = SERVO_MOTOR_PIN,
-        .speed_mode = SERVO_MOTOR_PWM_MODE,
-        .channel = SERVO_MOTOR_PWM_CHANNEL,
-        .timer_sel = SERVO_MOTOR_PWM_TIMER,
-        .duty = (duty_percent * ((1 << 10) - 1)) / 100,
-        .hpoint = 0,
-        .flags.output_invert = 0 // 極性通常（duty=maxで最大輝度、duty=0で消灯）
-        // .flags.output_invert = 1 // 極性反転（duty=0で最大輝度、duty=maxで消灯）
-    };
-    ledc_channel_config(&channel_conf);
-    // ledc_fade_func_install(0); // 初期化時のみ呼び出す
-}
-
-// オンボードLED PWM停止
-void onboard_led_pwm_stop(void) {
-    ledc_stop(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, 1);    //0); // 0=出力Low（output_invert=1時は消灯）
-    // ledc_fade_func_uninstall(); // 終了時のみ呼び出す
-}
-
-// オンボードLEDフェード用タスク
-static void onboard_led_pwm_fade_task(void *pvParameters) {
-    const int max_duty = (1 << 10) - 1; // 10bit解像度
-    const int fade_time_ms = 2000; // 2秒フェード
-    // まず消灯状態（duty=max）から開始
-    onboard_led_pwm_start(100, 1000); // duty_percent=100で消灯（output_invert=1のため）
-    vTaskDelay(pdMS_TO_TICKS(100)); // 安定化のため少し待つ
-    // 2秒で全点灯（duty=max→0）
-    ledc_set_fade_with_time(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, 0, fade_time_ms);
-    ledc_fade_start(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, LEDC_FADE_WAIT_DONE);
-    // 2秒で消灯（duty=0→max）
-    ledc_set_fade_with_time(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, max_duty, fade_time_ms);
-    ledc_fade_start(SERVO_MOTOR_PWM_MODE, SERVO_MOTOR_PWM_CHANNEL, LEDC_FADE_WAIT_DONE);
-    // 後始末（消灯）
-    onboard_led_pwm_stop();
-    vTaskDelete(NULL);
-}
-
-// オンボードLEDを1秒で最大輝度まで上げ、1秒で消灯まで下げる（非ブロッキング）
-void onboard_led_pwm_fade_test(void) {
-xTaskCreate(onboard_led_pwm_fade_task, "led_fade", 2048, NULL, 5, NULL); // スタックサイズ増加
-}
-
 // 1パルス=100円換算用
 uint32_t total_pulse_count = 0;
 // 入金データの実体定義
@@ -196,88 +135,6 @@ void log_list_serial_output(void) {
     printf("・BOOTボタン5秒長押しでログクリア\n");
     printf("・BOOTボタン10秒長押しでNVS初期化\n");
 }
-
-
-// // NVSから合計パルス数とWi-Fi情報(SSID/PASS)を読み込む関数
-// esp_err_t load_bank_data_from_nvs(void)
-// {
-//     nvs_handle_t nvs_handle;
-//     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
-//     if (err != ESP_OK) {
-//         ESP_LOGI(TAG, "NVSからの読み込みに失敗（初回起動？）: %s", esp_err_to_name(err));
-//         return err;
-//     }
-//     err = nvs_get_u32(nvs_handle, "pulse_cnt", &total_pulse_count);
-//     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-//         ESP_LOGE(TAG, "パルス数の読み込みに失敗: %s", esp_err_to_name(err));
-//     }
-//     size_t len;
-//     len = sizeof(bank_data.ssid);
-//     err = nvs_get_str(nvs_handle, "wifi_ssid", bank_data.ssid, &len);
-//     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) bank_data.ssid[0] = '\0';
-//     len = sizeof(bank_data.password);
-//     err = nvs_get_str(nvs_handle, "wifi_pass", bank_data.password, &len);
-//     if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) bank_data.password[0] = '\0';
-//     nvs_close(nvs_handle);
-//     total_value = total_pulse_count * 100;
-//     ESP_LOGI(TAG, "NVSから合計パルス数を読み込みました: %luパルス（%lu円）", total_pulse_count, total_value);
-//     ESP_LOGI(TAG, "NVSからWi-Fi情報を読み込みました: SSID=%s PASS=%s", bank_data.ssid, bank_data.password);
-//     return ESP_OK;
-// }
-
-// // NVSに合計パルス数とWi-Fi情報(SSID/PASS)を保存する関数
-// esp_err_t save_bank_data_to_nvs(void)
-// {
-//     if (xSemaphoreTake(nvs_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
-//         ESP_LOGW(TAG, "NVS保存処理がタイムアウトしました");
-//         return ESP_ERR_TIMEOUT;
-//     }
-//     nvs_handle_t nvs_handle;
-//     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
-//     if (err != ESP_OK) {
-//         ESP_LOGE(TAG, "NVSのオープンに失敗: %s", esp_err_to_name(err));
-//         xSemaphoreGive(nvs_mutex);
-//         return err;
-//     }
-//     err = nvs_set_u32(nvs_handle, "pulse_cnt", total_pulse_count);
-//     if (err != ESP_OK) {
-//         ESP_LOGE(TAG, "パルス数の保存に失敗: %s", esp_err_to_name(err));
-//         nvs_close(nvs_handle);
-//         xSemaphoreGive(nvs_mutex);
-//         return err;
-//     }
-//     err = nvs_set_str(nvs_handle, "wifi_ssid", bank_data.ssid);
-//     if (err != ESP_OK) ESP_LOGE(TAG, "SSIDの保存に失敗: %s", esp_err_to_name(err));
-//     err = nvs_set_str(nvs_handle, "wifi_pass", bank_data.password);
-//     if (err != ESP_OK) ESP_LOGE(TAG, "PASSの保存に失敗: %s", esp_err_to_name(err));
-//     err = nvs_commit(nvs_handle);
-//     if (err != ESP_OK) {
-//         ESP_LOGE(TAG, "NVSコミットに失敗: %s", esp_err_to_name(err));
-//     } else {
-//         ESP_LOGI(TAG, "合計パルス数とWi-Fi情報をNVSに保存しました: %luパルス, SSID=%s PASS=%s", total_pulse_count, bank_data.ssid, bank_data.password);
-//     }
-//     nvs_close(nvs_handle);
-//     xSemaphoreGive(nvs_mutex);
-//     return err;
-// }
-
-// // 合計パルス数をリセットする関数
-// esp_err_t reset_bank_data(void)
-// {
-//     total_pulse_count = 0;
-//     total_value = 0;
-//     nvs_handle_t nvs_handle;
-//     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
-//     if (err == ESP_OK) {
-//         nvs_erase_all(nvs_handle);
-//         nvs_commit(nvs_handle);
-//         nvs_close(nvs_handle);
-//         ESP_LOGI(TAG, "合計パルス数をリセットしました");
-//     } else {
-//         ESP_LOGE(TAG, "NVSリセットに失敗: %s", esp_err_to_name(err));
-//     }
-//     return err;
-// }
 
 // リセットボタンチェック機能
 void check_reset_button(void)
@@ -628,14 +485,14 @@ void coin_selector_task(void *pvParameters)
                             // ロギング（日時記録＆カウント更新）
                             add_chip_buy_log(time(NULL));
 
-                            // // サーボモータの代用: オンボードLEDを4秒間PWMでフェードアップ・ダウン
-                            // onboard_led_pwm_fade_test(); // フェードテスト
-                            // vTaskDelay(pdMS_TO_TICKS(1000));
+                            // MakerChip送出
+                            servo_0to180();
 
                             lcd_display_request(LCD_STATE_THANKS);
                             lcd_display_request(LCD_STATE_DATE_TIME);
 
-                            vTaskDelay(pdMS_TO_TICKS(4000));
+                            servo_180to0();
+                            vTaskDelay(pdMS_TO_TICKS(2000));
                             memset(&bank_data, 0, sizeof(bank_data));
                             // save_bank_data_to_nvs();
 

@@ -24,12 +24,6 @@ uint16_t color_black;
 uint16_t color_green;
 uint16_t color_red;
 
-// // LCD描画本体
-// static void lcd_draw_ui_title(void) {
-//     lcd_print_string(25, 10, "MAKER CHIP", color_title, color_title_back, 2);
-//     // lcd_print_string(55, 40, "GACHA", color_black, color_back, 2);
-//     lcd_print_string(40, 40, "GACHA", color_title, color_title_back, 3);
-// }
 static void lcd_draw_ui(lcd_disp_state_t lcd_state) {
 // static void lcd_draw_ui(void) {
     if (!lcd_initialized) return;

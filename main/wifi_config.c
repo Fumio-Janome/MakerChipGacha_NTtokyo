@@ -329,47 +329,6 @@ void get_latest_time(char *buf, size_t len) {
     buf[len-1] = '\0';
 }
 
-// // SoftAP自身のSSIDがスキャンで見えるか確認するデバッグタスク
-// static void softap_selfscan_task(void *pvParameters) {
-//     while (1) {
-//         wifi_scan_config_t scan_config = {
-//             .ssid = NULL,
-//             .bssid = NULL,
-//             .channel = 0,
-//             .show_hidden = true
-//         };
-//         ESP_LOGI(TAG, "[SoftAP自己スキャン] スキャン開始");
-//         esp_err_t err = esp_wifi_scan_start(&scan_config, true);
-//         if (err != ESP_OK) {
-//             ESP_LOGW(TAG, "[SoftAP自己スキャン] scan_start失敗: %d", err);
-//         } else {
-//             uint16_t ap_num = 0;
-//             esp_wifi_scan_get_ap_num(&ap_num);
-//             wifi_ap_record_t *ap_list = calloc(ap_num, sizeof(wifi_ap_record_t));
-//             if (ap_list && ap_num > 0) {
-//                 esp_wifi_scan_get_ap_records(&ap_num, ap_list);
-//                 bool found = false;
-//                 const char *my_ssid = WIFI_SOFTAP_SSID;
-//                 for (int i = 0; i < ap_num; ++i) {
-//                     ESP_LOGI(TAG, "[SoftAP自己スキャン] 発見SSID: '%s'", (char*)ap_list[i].ssid);
-//                     if (strcmp((char*)ap_list[i].ssid, my_ssid) == 0) {
-//                         found = true;
-//                     }
-//                 }
-//                 if (found) {
-//                     ESP_LOGI(TAG, "[SoftAP自己スキャン] 自分のSSID '%s' を検出!", my_ssid);
-//                 } else {
-//                     ESP_LOGW(TAG, "[SoftAP自己スキャン] 自分のSSID '%s' は検出できず", my_ssid);
-//                 }
-//                 free(ap_list);
-//             } else {
-//                 ESP_LOGW(TAG, "[SoftAP自己スキャン] APリスト取得失敗または0件");
-//             }
-//         }
-//         vTaskDelay(pdMS_TO_TICKS(10000)); // 10秒ごと
-//     }
-// }
-
 // Wi-Fiセットアップ・NTP取得を別タスクで実行する関数
 static void wifi_setup_task(void *pvParameters) {
     // イベントグループ初期化（初回のみ）
