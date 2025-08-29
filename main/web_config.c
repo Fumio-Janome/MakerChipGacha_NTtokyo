@@ -113,7 +113,10 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
         "table{width:100%%;border-collapse:collapse;margin:10px 0}"
         "td{padding:8px;border-bottom:1px solid #ddd}"
         ".t{color:#4CAF50;font-weight:bold}"
+        ".log-btn{margin:10px 0 10px 0;width:100%%;font-size:16px;padding:10px;}"
+        "textarea{width:100%%;height:200px;resize:vertical;overflow:auto;font-size:14px;box-sizing:border-box;margin-bottom:10px;}"
         "</style>"
+        "<script>function scrollToLog(){document.getElementById('logbox').scrollIntoView({behavior:'smooth'});}</script>"
         "</head><body>"
         "<div class=c>"
         "<h1>Cerevo Maker Chip Gacha<br>Wi-Fi設定</h1>"
@@ -130,6 +133,10 @@ static esp_err_t wifi_get_handler(httpd_req_t *req) {
         "<button type=submit>保存</button>"
         "</form>"
         "<p style='color:gray;font-size:small;'>※SSIDは必須、パスワードは必要に応じて入力してください。</p>"
+        "<hr>"
+        "<h2>購入ログの参照</h2>"
+        "<button type='button' class='log-btn' onclick='scrollToLog()'>参照</button>"
+        "<textarea id='logbox' readonly placeholder='ここに購入ログが表示されます'></textarea>"
         "</div>"
         "</body></html>",
         ssid_esc, ssid_esc);
