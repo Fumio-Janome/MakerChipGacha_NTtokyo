@@ -491,6 +491,7 @@ void coin_selector_task(void *pvParameters)
                             lcd_display_request(LCD_STATE_THANKS);
                             lcd_display_request(LCD_STATE_DATE_TIME);
 
+                            vTaskDelay(pdMS_TO_TICKS(1000));
                             servo_180to0();
                             vTaskDelay(pdMS_TO_TICKS(2000));
                             memset(&bank_data, 0, sizeof(bank_data));
